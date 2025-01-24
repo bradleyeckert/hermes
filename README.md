@@ -1,2 +1,2 @@
 # hermes
-Secure cross-development Forth environment
+Secure Forth cross-development environment
