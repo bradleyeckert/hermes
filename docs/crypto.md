@@ -26,7 +26,7 @@ H→T	The host sends an “unlock” command, which is a request to authenticate
 
 T→H	The target responds with a 12-byte random number (challenge) encrypted using the specified key and a fixed IV. The host decrypts the challenge using the same key and sends the result back to the target. The random number is the nonce for the session.
 
-H→T	The host sends The target verifies the response and, if successful, sends an authentication status back to the host. It now accepts functions Fn4 to Fn9. The tether now expects incoming data to be encrypted and will return encrypted data. END sets the RXfull flag.
+H→T	The host sends The target verifies the response and, if successful, sends an authentication status back to the host. It now accepts functions Fn4 and above. The tether now expects incoming data to be encrypted and will return encrypted data. END sets the RXfull flag.
 
 The target chooses the random challenge, so a fake host cannot use a replay attack to connect to the target. The target is the side with information that must be secured. The host side does not have any secrets accessible by UART, so a fake target using a replay attack to establish a connection is not useful.
 
@@ -37,7 +37,7 @@ The target chooses the random challenge, so a fake host cannot use a replay atta
 * On-chip Flash memory for code and keys
 * Connection to the host
 
-## Testing
+## Implementation
 
 The AEAD should have built-in-self-test code to ensure that it hasn't been tampered with.
 
@@ -52,4 +52,8 @@ Each short message, between N bytes (between 1 and 1k), is encrypted or decrypte
 
 The cyphertext of the N-byte message is input to the Poly1305 hash. The 16-byte tag is extracted from the poly1305_context using a version of poly1305_finish that does not modify the context.
 
-There are contexts for the recaive and transmit streams. The total amount of RAM needed for these structures is about 520 bytes.
+There are contexts for the receive and transmit streams. The total amount of RAM needed for these structures is about 520 bytes. With roomy I/O buffers, total RAM usage should be in the 1KB to 1.5 KB range.
+
+## Crypto functions
+
+The `ChaCha20` and `poly1305` libraries are included as Git submodules. The tether's `tcsecure` library calls functions in them. It also calls platform-specific functions in `tcsupport.c`.
