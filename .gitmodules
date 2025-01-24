@@ -1,0 +1,6 @@
+[submodule "libs/chacha20-c"]
+	path = libs/chacha20-c
+	url = https://github.com/Ginurx/chacha20-c.git
+[submodule "libs/poly1305-donna"]
+	path = libs/poly1305-donna
+	url = https://github.com/floodyberry/poly1305-donna
