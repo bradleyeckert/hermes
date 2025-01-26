@@ -8,27 +8,42 @@ On one hand, backdoors are generally discouraged since an attacker could exploit
 
 One approach to the problem is to eliminate the tether in production devices. If hardware needs to be debugged, you would disable anti-rollback measures and flash the device with the debug version. The other approach is to design the tether for security. Good security means the tether can be used to push firmware updates.
 
-Strong security uses AEAD encryption. In this case, ChaCha20-Poly1305, which is used in IPsec, SSH, TLS 1.2, DTLS 1.2, TLS 1.3, etc. The security relies on choosing a unique nonce for every message (or tether session) encrypted. Compared to AES-GCM, implementations of ChaCha20-Poly1305 are less vulnerable to timing attacks.
+Strong security uses AEAD encryption. In this case, XChaCha20-Poly1305. The security relies on choosing a unique nonce for every message (or tether session) encrypted. Compared to AES-GCM, implementations of XChaCha20-Poly1305 are less vulnerable to timing attacks.
 
-The tether uses ChaCha20-Poly1305 a little differently than TLS (RFC 8439). The authentication handshake initializes ChaCha20-Poly1305 with a random 96-bit nonce. ChaCha20 uses a fixed private encryption key. The nonce is hashed with the fixed private signature key to provide the one-time key for Poly1305. These two keys are stored such that nothing but the tether code can access them.
+The tether uses XChaCha20-Poly1305 a little differently than TLS (RFC 8439). The authentication handshake initializes XChaCha20-Poly1305 with a random 192-bit nonce. XChaCha20 uses a fixed private encryption key. The nonce is hashed with the fixed private signature key to provide the one-time key for Poly1305. These two 256-bit keys are stored such that nothing but the tether code can access them.
 
-The reason the keys are fixed (and unique to each target device) is to enable key management without public key exchange (PKE). PKE is supposedly secure, but the fact that deep packet inspection of TLS is a thing indicates that it's not. The lack of complaints from governments regarding HTTPS and E2E encryption is not reassuring. Self-signed SSL certificates on embedded systems seem a little dicey. Finally, PKE has (or will have) quantum-resistance problems. For all of these reasons, the security risks of fixed keys outweigh the benefits of ephemeral SSL keys.
+The reason the keys are fixed (and unique to each target device) is to enable key management without public key exchange (PKE). PKE is supposedly secure, but the fact that deep packet inspection of TLS is a thing indicates that it's not. Self-signed SSL certificates on embedded systems seem a little dicey. Finally, PKE has (or will have) quantum-resistance problems. For all of these reasons, the security risks of fixed keys outweigh the benefits of ephemeral SSL keys.
 
-The keystream is used in short bursts, so each tether command (or response) is encrypted with a small part of the keystream. The final tether command is a signature, which is the current 16-byte HMAC. The target detects when a signature is invalid or missing. The target saves the expected HMAC before evaluating the input, just as the host does. The last command is a “signature” command which sends the expected HMAC.
+The keystream is used in short bursts, so each tether command (or response) is encrypted with a small part of the keystream. Ciphertext versions of the original plaintext message have a 16-byte signature appended. The receiver assumes the last 16 bytes to be a signature. The private signing key used by Poly1305 must be unique to each message. This is handled by adding a 64-bit counter to the key and incrementing the counter after each message.
 
 ## Authentication
 
-H→T	The host sends a “read boilerplate” command to the target.
+The host requests authentication from the target. After that authentication uses a 3-pass authentication handshake similar to Mifare DESFire:
 
-T→H	The target responds with a boilerplate containing a unique identifier (UID) and the list of supported commands. The host may use the UID to look up the target’s key. The host and target keys must match for the endpoints to be paired.
+### 1. Challenge from target:
+The target generates a 24-byte random number (to be used as the H>T nonce), encrypts it with the shared secret key and a constant IV, and sends it to the host as a challenge.
 
-H→T	The host sends an “unlock” command, which is a request to authenticate the target using a specific key, such as the Crypto key.
+The sender **MUST NOT** use poly1305_auth to authenticate more than one message under the same key. Therefore, the challenge from the target is not signed. No problem. Without the key, a Man in the Middle cannot spoof the host. It can only modify the message, which would prevent authentication.
 
-T→H	The target responds with a 12-byte random number (challenge) encrypted using the specified key and a fixed IV. The host decrypts the challenge using the same key and sends the result back to the target. The random number is the nonce for the session.
+Target side: Generate random number, Initialize XChaCha20(TX) and encrypt the number, Return 24-byte challenge.
 
-H→T	The host sends The target verifies the response and, if successful, sends an authentication status back to the host. It now accepts functions Fn4 and above. The tether now expects incoming data to be encrypted and will return encrypted data. END sets the RXfull flag.
+Resolved IVs: Target TX
 
-The target chooses the random challenge, so a fake host cannot use a replay attack to connect to the target. The target is the side with information that must be secured. The host side does not have any secrets accessible by UART, so a fake target using a replay attack to establish a connection is not useful.
+### 2. Challenge from host:
+The host decrypts the received challenge, generates its own random number (RX nonce), encrypts it with the shared key and H>T nonce IV, and sends it back to the target.
+
+Host side: Initialize XChaCha20(TX) using the same key and constant IV as the target, decrypt the 24-byte challenge and use it as the TX nonce. Initialize XChaCha20(TX) and Poly1305(TX) using the new nonce. Encrypt a 24-byte random number (the RX nonce) and return the 40-byte response: 24-byte ciphertext and 16-byte HMAC tag. Initialize XChaCha20(RX) and Poly1305(RX) using the RX nonce.
+
+Resolved IVs: Host RX, Host TX
+
+### 3. Verification:
+The target decrypts the host's challenge and if it's successful, the authentication is complete and a secure communication channel is established. Digital signing via AEAD ensures that the host's response is valid. The newly decrypted host challenge will now be used as the T>H nonce.
+
+Target side: Authenticate the signature. If it's good, initialize XChaCha20(RX) and Poly1305(TX) with the decrypted message as the nonce.
+
+Resolved IVs: Target RX
+
+The target side uses two authentication functions and the host uses one. All three are in the `tcsecure.h` file along with an encrypt and a decrypt function.
 
 ## Target hardware requirements
 
@@ -41,19 +56,12 @@ The target chooses the random challenge, so a fake host cannot use a replay atta
 
 The AEAD should have built-in-self-test code to ensure that it hasn't been tampered with.
 
-Short message use of the AEAD initializes once as follows:
-
-1. Get 32-byte key_c, 32-byte key_s, and 12-byte random nonce.
-2. Initialize ChaCha20 with key_c and nonce.
-3. Initialize Poly1305 with key_s.
-4. Get the hash of the nonce and use it to initialize Poly1305.
+Authentication sets up random IVs. The contexts must be loaded with the keys before authentication.
 
 Each short message, between N bytes (between 1 and 1k), is encrypted or decrypted with the next N bytes of the ChaCha20 keystream. The next 64-byte block of the keystream is obtained as needed.
 
-The cyphertext of the N-byte message is input to the Poly1305 hash. The 16-byte tag is extracted from the poly1305_context using a version of poly1305_finish that does not modify the context.
-
-There are contexts for the receive and transmit streams. The total amount of RAM needed for these structures is about 520 bytes. With roomy I/O buffers, total RAM usage should be in the 1KB to 1.5 KB range.
+The cyphertext of the N-byte message is input to the Poly1305 hash.
 
 ## Crypto functions
 
-The `ChaCha20` and `poly1305` libraries are included as Git submodules. The tether's `tcsecure` library calls functions in them. It also calls platform-specific functions in `tcsupport.c`.
+The `XChaCha20` and `poly1305` libraries are included as Git submodules. The tether's `tcsecure` library calls functions in them. It also calls platform-specific functions in `tcplatform.c`.

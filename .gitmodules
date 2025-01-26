@@ -4,3 +4,9 @@
 [submodule "libs/poly1305-donna"]
 	path = libs/poly1305-donna
 	url = https://github.com/floodyberry/poly1305-donna
+[submodule "src/libs/xchacha20"]
+	path = src/libs/xchacha20
+	url = https://github.com/spcnvdr/xchacha20.git
+[submodule "src/libs/rs232"]
+	path = src/libs/rs232
+	url = https://github.com/Marzac/rs232.git
