@@ -1,2 +1,4 @@
 # hermes
-Secure Forth cross-development environment
+Secure cross-testing environment
+
+Status: Planning stage, working on secure UART
