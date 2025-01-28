@@ -21,7 +21,7 @@ int tcRNGfunction(uint8_t *dest, unsigned int size) {
 	}								// You want true random numbers IRL.
 	return 0;
 {
-	
+
 /*
 Fetch a 32-byte private key based on its index.
 Even keys are for encryption/decryption, odd keys are for signing.

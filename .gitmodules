@@ -10,3 +10,6 @@
 [submodule "src/libs/rs232"]
 	path = src/libs/rs232
 	url = https://github.com/Marzac/rs232.git
+[submodule "src/libs/micro-ecc"]
+	path = src/libs/micro-ecc
+	url = https://github.com/kmackay/micro-ecc.git
