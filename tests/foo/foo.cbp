@@ -31,13 +31,22 @@
 		<Compiler>
 			<Add option="-Wall" />
 		</Compiler>
-		<Unit filename="../../src/libs/micro-ecc/uECC.c">
+		<Unit filename="../../src/libs/csiphash/csiphash.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../../src/libs/xchacha20/src/xchacha20.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../../src/tcsecure/tchost.c">
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="../../src/tcsecure/tcplatform.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="../../src/tcsecure/tcsecure.c">
+		<Unit filename="../../src/tcsecure/tctarget.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="main.c">
 			<Option compilerVar="CC" />
 		</Unit>
 		<Extensions>
