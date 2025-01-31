@@ -4,7 +4,7 @@ Risk management is a tool for herding cats. It forces developers to consider wha
 
 The main difference from an ad-hoc approach is that Risk Management has defined inputs and outputs guided by a quality standard. For commercial projects, you would use mandatory industry-specific standards (automotive, medical, etc.). If you are making a real product, expect to fork over real money. [ISO/IEC 5055](https://standards.iso.org/ittf/PubliclyAvailableStandards/index.html) is free. The 2021 version has a 23-page list of naughty software practices starting on page 8, which would be useful when designing tests.
 
-Hermes (will) includes tools to build the documentation.
+Hermes will include tools to build the documentation.
 
 ## Traceability Matrix
 
@@ -41,11 +41,11 @@ That's a lot of columns. An FDA-style Traceability Matrix has five columns, with
 |----------|--------------|-------------------|---------------|------------|
 |          | SR#, SR      | SRS#, SRS         | TC#, Report   | TE#, Report|
 
-**Use Case** Defines the situation in which the software could be potentially used
-**Requirement (Design Input)** Defines what the software should do to meet the use cases
-**Software Specifications (Design Output)** Defines the technical functionalities of the software that meets the requirements
-**Verification** Checks to see if the developed system meets the design specifications
-**Validation** Checks to see if the developed system meets the needs of the stakeholders (i.e. use cases).
+- **Use Case** Defines the situation in which the software could be potentially used
+- **Requirement (Design Input)** Defines what the software should do to meet the use cases
+- **Software Specifications (Design Output)** Defines the technical functionalities of the software that meets the requirements
+- **Verification** Checks to see if the developed system meets the design specifications
+- **Validation** Checks to see if the developed system meets the needs of the stakeholders (i.e. use cases).
 
 Individual reports have their own HTML templates. The documentation generator processes them with an `include` macro. 
 
