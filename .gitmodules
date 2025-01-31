@@ -13,3 +13,9 @@
 [submodule "src/libs/micro-ecc"]
 	path = src/libs/micro-ecc
 	url = https://github.com/kmackay/micro-ecc.git
+[submodule "src/libs/ascon-c"]
+	path = src/libs/ascon-c
+	url = https://github.com/ascon/ascon-c.git
+[submodule "src/libs/csiphash"]
+	path = src/libs/csiphash
+	url = https://github.com/majek/csiphash.git

@@ -1,7 +1,14 @@
 #ifndef __TCPLATFORM_H__
 #define __TCPLATFORM_H__
 
-#include <stddef.h>
+#include <stdint.h>
+
+/** Point to a 128-bit key in the key set. Keys may concatenate to 256-bit.
+ * @param n Key selector
+ * @return Pointer to the (read-only) key, NULL if the key is bad.
+ */
+const uint8_t * tcKeyN(unsigned int n);
+
 
 /** Generate a run of random bytes
  * @param out dest Destination
@@ -9,13 +16,6 @@
  * @return 0 if the random number is random, other if error
  */
 int tcRNGfunction(uint8_t *dest, unsigned int size);
-
-/** Fetch a 32-byte private key based on its index
- * @param out dest Destination
- * @param in kid
- * @return Returns 0 for success, 1 for invalid index, 2 for blank key
- */
-int tcFetchKey(uint8_t *dest, unsigned int kid);
 
 /** Reset the MCU
  */

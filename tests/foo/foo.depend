@@ -1,0 +1,119 @@
+# depslib dependency file v1.0
+1738168485 source:c:\users\brad\documents\github\hermes\src\tcsecure\tsecure.c
+	<stdlib.h>
+	<stdint.h>
+	<string.h>
+	"../libs/micro-ecc/uECC.h"
+	"tcplatform.h"
+	<stdio.h>
+
+1738166995 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\uecc.h
+	<stdint.h>
+
+1738300123 c:\users\brad\documents\github\hermes\src\tcsecure\tcplatform.h
+	<stdint.h>
+
+1738267176 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcplatform.c
+	<stdint.h>
+	<stdlib.h>
+	<string.h>
+	<stdio.h>
+	"tcplatform.h"
+
+1738067479 source:c:\users\brad\documents\github\hermes\src\libs\micro-ecc\uecc.c
+	"uECC.h"
+	"uECC_vli.h"
+	"platform-specific.inc"
+	"asm_arm.inc"
+	"asm_avr.inc"
+	"curve-specific.inc"
+
+1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\uecc_vli.h
+	"uECC.h"
+	"types.h"
+
+1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\types.h
+
+1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\platform-specific.inc
+	"types.h"
+	<windows.h>
+	<wincrypt.h>
+	<sys/types.h>
+	<fcntl.h>
+	<unistd.h>
+	<random.h>
+	"app_error.h"
+	"nrf_crypto_rng.h"
+
+1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\asm_arm.inc
+	"asm_arm_mult_square_umaal.inc"
+	"asm_arm_mult_square.inc"
+
+1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\asm_arm_mult_square_umaal.inc
+
+1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\asm_arm_mult_square.inc
+
+1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\asm_avr.inc
+	"asm_avr_mult_square.inc"
+
+1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\asm_avr_mult_square.inc
+
+1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\curve-specific.inc
+
+1737765250 source:c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.c
+	<stdlib.h>
+	<stdint.h>
+	"xchacha20.h"
+
+1737765250 c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.h
+	<stdint.h>
+
+1738306285 source:c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.c
+	"tctarget.h"
+	"tcplatform.h"
+	<stdlib.h>
+	<stdint.h>
+	<string.h>
+	<stdio.h>
+	"../libs/xchacha20/src/xchacha20.h"
+	"../libs/poly1305-donna/poly1305-donna.h"
+	"tcconfig.h"
+
+1738302491 c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.h
+	<stdint.h>
+	"tcconfig.h"
+
+1738267212 source:c:\users\brad\documents\github\hermes\src\libs\csiphash\csiphash.c
+	<stdint.h>
+	<libkern/OSByteOrder.h>
+	<sys/endian.h>
+	<endian.h>
+
+1738305879 source:c:\users\brad\documents\github\hermes\tests\foo\main.c
+	"../../src/tcsecure/tchost.h"
+	"../../src/tcsecure/tctarget.h"
+	"../../src/tcsecure/tcplatform.h"
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+
+1738307337 c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.h
+	<stdint.h>
+	"tcconfig.h"
+
+1737739664 c:\users\brad\documents\github\hermes\src\libs\poly1305-donna\poly1305-donna.h
+	<stddef.h>
+
+1738305657 c:\users\brad\documents\github\hermes\src\tcsecure\tchost.h
+	<stdint.h>
+	"tcconfig.h"
+
+1738307049 source:c:\users\brad\documents\github\hermes\src\tcsecure\tchost.c
+	<stdlib.h>
+	<stdint.h>
+	<string.h>
+	<stdio.h>
+	"../libs/xchacha20/src/xchacha20.h"
+	"../libs/poly1305-donna/poly1305-donna.h"
+	"tcconfig.h"
+
