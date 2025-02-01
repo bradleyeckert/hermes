@@ -4,12 +4,8 @@
 #include <stdint.h>
 #include "tcconfig.h"
 
-/* TC_HOST_BUFSIZE = size of transmit and receive buffers on target,
- * must be a power of 2. The minimum allowable size is 128.
- */
-
-extern tcsec_ctx tc_host_tx[HOST_PORTS];
-extern tcsec_ctx tc_host_rx[HOST_PORTS];
+tcsec_ctx * tc_host_tx(int port);
+tcsec_ctx * tc_host_rx(int port);
 
 
 /** Host side decrypts the tcChallengeHost challenge, generates its own random
@@ -21,26 +17,7 @@ extern tcsec_ctx tc_host_rx[HOST_PORTS];
  * @param out The 40-byte challenge to send to the target
  * @return 0 if okay, else error
  */
-int tcChallengeTarget(int host_port, int target_port);
-
-
-/** Encrypt a message
- * @param ctx Context to use
- * @param in Plaintext message
- * @param inlen Input message length
- * @param out Ciphertext+HMAC message
- * @return 0 if okay, else error
- */
-int tchEncrypt(tcsec_ctx *ctx, uint8_t *in, int inlen, uint8_t *out);
-
-/** Decrypt a message
- * @param ctx Context to use
- * @param in Ciphertext+HMAC message
- * @param inlen Input message length
- * @param out Plaintext message
- * @return 0 if okay, else error
- */
-int tchDecrypt(tcsec_ctx *ctx, uint8_t *in, int inlen, uint8_t *out);
+int tcChallengeTarget(int host_port);
 
 
 #endif /* __TCHOST_H__ */

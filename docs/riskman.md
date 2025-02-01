@@ -41,11 +41,11 @@ That's a lot of columns. An FDA-style Traceability Matrix has five columns, with
 |----------|--------------|-------------------|---------------|------------|
 |          | SR#, SR      | SRS#, SRS         | TC#, Report   | TE#, Report|
 
-- **Use Case** Defines the situation in which the software could be potentially used
-- **Requirement (Design Input)** Defines what the software should do to meet the use cases
-- **Software Specifications (Design Output)** Defines the technical functionalities of the software that meets the requirements
-- **Verification** Checks to see if the developed system meets the design specifications
-- **Validation** Checks to see if the developed system meets the needs of the stakeholders (i.e. use cases).
+- **Use Case** defines the situation in which the software could be potentially used
+- **Requirement (Design Input)** defines what the software should do to meet the use cases
+- **Software Specifications (Design Output)** defines the technical functionalities of the software that meets the requirements
+- **Verification** checks to see if the developed system meets the design specifications
+- **Validation** checks to see if the developed system meets the needs of the stakeholders (i.e. use cases).
 
 Individual reports have their own HTML templates. The documentation generator processes them with an `include` macro. 
 

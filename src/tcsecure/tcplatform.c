@@ -34,7 +34,7 @@ int tcRNGfunction(uint8_t *dest, unsigned int size) {
 	while (size--) {				// pseudo-random numbers for testing
 		*dest++ = rand() & 0xFF;	// DO NOT USE in a real application
 	}								// You want true random numbers IRL.
-	return 0;
+	return 0;                       // return TC_ERROR_BAD_RNG if broken
 }
 
 

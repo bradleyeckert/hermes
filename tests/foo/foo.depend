@@ -13,7 +13,7 @@
 1738300123 c:\users\brad\documents\github\hermes\src\tcsecure\tcplatform.h
 	<stdint.h>
 
-1738267176 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcplatform.c
+1738373073 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcplatform.c
 	<stdint.h>
 	<stdlib.h>
 	<string.h>
@@ -68,7 +68,7 @@
 1737765250 c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.h
 	<stdint.h>
 
-1738306285 source:c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.c
+1738388194 source:c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.c
 	"tctarget.h"
 	"tcplatform.h"
 	<stdlib.h>
@@ -76,20 +76,19 @@
 	<string.h>
 	<stdio.h>
 	"../libs/xchacha20/src/xchacha20.h"
-	"../libs/poly1305-donna/poly1305-donna.h"
 	"tcconfig.h"
 
-1738302491 c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.h
+1738390626 c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.h
 	<stdint.h>
 	"tcconfig.h"
 
-1738267212 source:c:\users\brad\documents\github\hermes\src\libs\csiphash\csiphash.c
+1738334899 source:c:\users\brad\documents\github\hermes\src\libs\csiphash\csiphash.c
 	<stdint.h>
 	<libkern/OSByteOrder.h>
 	<sys/endian.h>
 	<endian.h>
 
-1738305879 source:c:\users\brad\documents\github\hermes\tests\foo\main.c
+1738389964 source:c:\users\brad\documents\github\hermes\tests\foo\main.c
 	"../../src/tcsecure/tchost.h"
 	"../../src/tcsecure/tctarget.h"
 	"../../src/tcsecure/tcplatform.h"
@@ -97,23 +96,35 @@
 	<stdlib.h>
 	<string.h>
 
-1738307337 c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.h
+1738390785 c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.h
 	<stdint.h>
 	"tcconfig.h"
 
 1737739664 c:\users\brad\documents\github\hermes\src\libs\poly1305-donna\poly1305-donna.h
 	<stddef.h>
 
-1738305657 c:\users\brad\documents\github\hermes\src\tcsecure\tchost.h
+1738390811 c:\users\brad\documents\github\hermes\src\tcsecure\tchost.h
 	<stdint.h>
 	"tcconfig.h"
 
-1738307049 source:c:\users\brad\documents\github\hermes\src\tcsecure\tchost.c
+1738389488 source:c:\users\brad\documents\github\hermes\src\tcsecure\tchost.c
+	<stdlib.h>
+	<stdint.h>
+	<string.h>
+	<stdio.h>
+	"inttypes.h"
+	"../libs/xchacha20/src/xchacha20.h"
+	"tchost.h"
+	"tcplatform.h"
+	"tcconfig.h"
+
+1738388116 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.c
+	"tctarget.h"
+	"tcplatform.h"
 	<stdlib.h>
 	<stdint.h>
 	<string.h>
 	<stdio.h>
 	"../libs/xchacha20/src/xchacha20.h"
-	"../libs/poly1305-donna/poly1305-donna.h"
 	"tcconfig.h"
 
