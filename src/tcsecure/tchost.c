@@ -8,7 +8,7 @@
 #include "inttypes.h"
 #include "../libs/xchacha20/src/xchacha20.h"
 #include "tchost.h"
-#include "tcplatform.h"
+#include "tchostHW.h"
 #include "tcconfig.h"
 
 static tcsec_ctx tx[HOST_PORTS];
@@ -24,19 +24,17 @@ tcsec_ctx * tc_host_rx(int port) {
     return &rx[port];
 }
 
+// In: IV[plain]:IV[cipher]:HMAC
+int tcNonceFromTarget(int host_port) {
+    return tcReceiveIV(&rx[host_port], host_port, tchKeyN);
+}
 
-/*
-In: IV[plain]:IV[cipher]:HMAC --> start decryption of rx using IV[cipher]
-Out: ResponseTag:IV[plain]:IV[cipher]:HMAC, start encryption of tx
-*/
-int tcChallengeTarget(int host_port) {
-    int r = tcReceiveIV(&rx[host_port], host_port);
-    if (r) return r;
+// Out: ResponseTag:IV[plain]:IV[cipher]:HMAC
+int tcNonceToTarget(int host_port) {
     tcsec_ctx *s = &tx[host_port];
     bufClear(s);
     bufAppend(s, ResponseTag, sizeof(ResponseTag));
-    r = tcSendIV(s, host_port);
-    return r;
+    return tcSendIV(s, host_port, tchKeyN, tchRNGfunction);
 }
 
 /*

@@ -1,5 +1,5 @@
-#ifndef __TCPLATFORM_H__
-#define __TCPLATFORM_H__
+#ifndef __TCTARGETHW_H__
+#define __TCTARGETHW_H__
 
 #include <stdint.h>
 
@@ -7,7 +7,7 @@
  * @param n Key selector
  * @return Pointer to the (read-only) key, NULL if the key is bad.
  */
-const uint8_t * tcKeyN(unsigned int n);
+const uint8_t * tctKeyN(unsigned int n);
 
 
 /** Generate a run of random bytes
@@ -15,10 +15,10 @@ const uint8_t * tcKeyN(unsigned int n);
  * @param in size Length in bytes, hard-limited to 32
  * @return 0 if the random number is random, other if error
  */
-int tcRNGfunction(uint8_t *dest, unsigned int size);
+int tctRNGfunction(uint8_t *dest, unsigned int size);
 
 /** Reset the MCU
  */
-void tcHardReset(void);
+void tctHardReset(void);
 
-#endif /* __TCPLATFORM_H__ */
+#endif /* __TCTARGETHW_H__ */

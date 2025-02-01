@@ -37,13 +37,19 @@
 		<Unit filename="../../src/libs/xchacha20/src/xchacha20.c">
 			<Option compilerVar="CC" />
 		</Unit>
+		<Unit filename="../../src/tcsecure/tcconfig.c">
+			<Option compilerVar="CC" />
+		</Unit>
 		<Unit filename="../../src/tcsecure/tchost.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="../../src/tcsecure/tcplatform.c">
+		<Unit filename="../../src/tcsecure/tchostHW.c">
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="../../src/tcsecure/tctarget.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../../src/tcsecure/tctargetHW.c">
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="main.c">

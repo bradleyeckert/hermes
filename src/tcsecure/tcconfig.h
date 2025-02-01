@@ -4,23 +4,17 @@
 #include <stdint.h>
 #include "tcconfig.h"
 
-/* TC_BUFSIZE = size of transmit and receive buffers.
- * The minimum allowable size is 128.
- */
-
-#define TC_BUFSIZE 256
+#define TC_BUFSIZE 256			/* 128 or 256 */
 #define TARGET_PORTS 1
 #define HOST_PORTS 1
 
-#define IV_LENGTH 24
-#define HASH_LENGTH 8
-#define KEYS_PER_PORT 6
+#define IV_LENGTH 24			/* for XChaCha20 */
+#define HASH_LENGTH 8			/* for SipHash */
+#define KEYS_PER_PORT 3 		/* for XChaCha20-SipHash AEAD */
 
 // Target --> Host message tags
-#define HOST_TAG_AUTH1 22
-#define HOST_TAG_AUTH2 249
-#define HOST_TAG_AUTH3 23
-#define HOST_TAG_AUTH4 248
+#define HOST_TAG_NEW_TH 249		/* New target --> host session */
+#define HOST_TAG_NEW_HT 23		/* New host --> target session */
 
 // Protocol 0 is Xchacha20-SipHash
 #define TC_PROTOCOL 0
@@ -28,7 +22,7 @@
 // Error tags
 #define TC_ERROR_MISSING_KEY    -1
 #define TC_ERROR_BAD_RNG        -2
-#define TC_ERROR_BAD_HASH       -3
+#define TC_ERROR_BAD_HMAC       -3
 
 
 #if ((TC_BUFSIZE-1) & TC_BUFSIZE)
@@ -59,18 +53,23 @@ int tcEncrypt(int port);
  */
 int tcDecrypt(int port);
 
+typedef const uint8_t * (*keyFn)(unsigned int n);
+typedef int (*rngFn)(uint8_t *dest, unsigned int size);
 
 void bufClear(tcsec_ctx *s);
-void bufAppend(tcsec_ctx *s, const uint8_t *src, uint8_t len);
-int tcSendIV(tcsec_ctx *s, int port);
-int tcReceiveIV(tcsec_ctx *s, int port);
+void bufAppend(tcsec_ctx *s, const uint8_t *src, int len);
+int tcSendIV(tcsec_ctx *s, int port, keyFn getkey, rngFn random);
+int tcReceiveIV(tcsec_ctx *s, int port, keyFn getkey);
 
 static const uint8_t ChallengeTag[] = {
-    HOST_TAG_AUTH2, 3+2*IV_LENGTH+HASH_LENGTH, TC_PROTOCOL
+    HOST_TAG_NEW_TH, 3+2*IV_LENGTH+HASH_LENGTH, TC_PROTOCOL
 };
 static const uint8_t ResponseTag[] = {
-    HOST_TAG_AUTH3, 3+2*IV_LENGTH+HASH_LENGTH, TC_PROTOCOL
+    HOST_TAG_NEW_HT, 3+2*IV_LENGTH+HASH_LENGTH, TC_PROTOCOL
 };
+
+
+// returnType (*functionPointerName)(parameterTypes);
 
 
 #endif /* __TCCONFIG_H__ */
