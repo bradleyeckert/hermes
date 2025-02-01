@@ -2,34 +2,24 @@
 <CodeBlocks_layout_file>
 	<FileVersion major="1" minor="0" />
 	<ActiveTarget name="Release" />
-	<File name="..\..\src\libs\csiphash\csiphash.c" open="0" top="0" tabpos="0" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
+	<File name="..\..\src\tcsecure\tctargetHW.c" open="1" top="0" tabpos="5" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
 		<Cursor>
-			<Cursor1 position="1506" topLine="30" />
-		</Cursor>
-	</File>
-	<File name="..\..\src\tcsecure\tchostHW.c" open="1" top="0" tabpos="4" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
-		<Cursor>
-			<Cursor1 position="876" topLine="0" />
+			<Cursor1 position="787" topLine="0" />
 		</Cursor>
 	</File>
 	<File name="main.c" open="1" top="0" tabpos="2" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
 		<Cursor>
-			<Cursor1 position="897" topLine="0" />
-		</Cursor>
-	</File>
-	<File name="..\..\src\tcsecure\tctarget.c" open="1" top="0" tabpos="1" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
-		<Cursor>
-			<Cursor1 position="211" topLine="0" />
+			<Cursor1 position="1081" topLine="0" />
 		</Cursor>
 	</File>
 	<File name="..\..\src\tcsecure\tcconfig.c" open="1" top="0" tabpos="6" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
 		<Cursor>
-			<Cursor1 position="1542" topLine="36" />
+			<Cursor1 position="207" topLine="0" />
 		</Cursor>
 	</File>
-	<File name="..\..\src\tcsecure\tctargetHW.c" open="1" top="0" tabpos="5" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
+	<File name="..\..\src\libs\csiphash\csiphash.c" open="0" top="0" tabpos="0" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
 		<Cursor>
-			<Cursor1 position="163" topLine="0" />
+			<Cursor1 position="1506" topLine="30" />
 		</Cursor>
 	</File>
 	<File name="..\..\src\tcsecure\tchost.c" open="1" top="0" tabpos="3" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
@@ -37,9 +27,19 @@
 			<Cursor1 position="262" topLine="0" />
 		</Cursor>
 	</File>
+	<File name="..\..\src\tcsecure\tchostHW.c" open="1" top="0" tabpos="4" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
+		<Cursor>
+			<Cursor1 position="1205" topLine="0" />
+		</Cursor>
+	</File>
 	<File name="..\..\src\libs\xchacha20\src\xchacha20.c" open="0" top="0" tabpos="0" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
 		<Cursor>
 			<Cursor1 position="4438" topLine="76" />
+		</Cursor>
+	</File>
+	<File name="..\..\src\tcsecure\tctarget.c" open="1" top="1" tabpos="1" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
+		<Cursor>
+			<Cursor1 position="561" topLine="9" />
 		</Cursor>
 	</File>
 </CodeBlocks_layout_file>
