@@ -34,13 +34,13 @@ tcsec_ctx * tc_target_rx(int port) {
 /** Target generates a wrapped nonce for the host
  * @param target_port Port this nonce is for
  * @return 0 if okay, else error
- * Output is to tx(port).buf
+ * Output is to tx[port].buf
  */
-int tcNonceToHost(int target_port, int extra) {
+int tcNonceToHost(int target_port, int Ysize) {
     tcsec_ctx *s = &tx[target_port];
-    bufClear(s);
-    bufAddChar(s, HOST_TAG_NEW_TH);
-    return tcSendIV(s, target_port, tctKeyN, tctRNGfunction, extra);
+    tcClearBuffer(s);
+    tcPutch(s, HOST_TAG_NEW_TH);
+    return tcSendIV(s, target_port, tctKeyN, tctRNGfunction, Ysize);
 }
 
 /** Target receives the host's nonce

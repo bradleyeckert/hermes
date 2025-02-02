@@ -19,3 +19,6 @@
 [submodule "src/libs/csiphash"]
 	path = src/libs/csiphash
 	url = https://github.com/majek/csiphash.git
+[submodule "src/libs/tiny-AES-c"]
+	path = src/libs/tiny-AES-c
+	url = https://github.com/kokke/tiny-AES-c.git
