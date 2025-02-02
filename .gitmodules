@@ -22,3 +22,9 @@
 [submodule "src/libs/tiny-AES-c"]
 	path = src/libs/tiny-AES-c
 	url = https://github.com/kokke/tiny-AES-c.git
+[submodule "src/libs/--force"]
+	path = src/libs/--force
+	url = https://github.com/majek/csiphash.git
+[submodule "src/libs/spihash"]
+	path = src/libs/spihash
+	url = https://github.com/majek/csiphash.git
