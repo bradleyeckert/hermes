@@ -30,11 +30,11 @@ int tcNonceFromTarget(int host_port) {
 }
 
 // Out: ResponseTag:IV[plain]:IV[cipher]:HMAC
-int tcNonceToTarget(int host_port) {
+int tcNonceToTarget(int host_port, int extra) {
     tcsec_ctx *s = &tx[host_port];
     bufClear(s);
-    bufAppend(s, ResponseTag, sizeof(ResponseTag));
-    return tcSendIV(s, host_port, tchKeyN, tchRNGfunction);
+    bufAddChar(s, HOST_TAG_NEW_HT);
+    return tcSendIV(s, host_port, tchKeyN, tchRNGfunction, extra);
 }
 
 /*

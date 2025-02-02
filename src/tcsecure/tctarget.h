@@ -6,9 +6,9 @@
 
 tcsec_ctx * tc_target_tx(int port);
 tcsec_ctx * tc_target_rx(int port);
-int tcNonceToHost(int target_port);
+int tcNonceToHost(int target_port, int extra);
 int tcNonceFromHost(int target_port);
-void tcTargetInit(void);
+int tcTargetInit(void);
 
 
 #endif /* __TCTARGET_H__ */

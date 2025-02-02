@@ -36,11 +36,11 @@ tcsec_ctx * tc_target_rx(int port) {
  * @return 0 if okay, else error
  * Output is to tx(port).buf
  */
-int tcNonceToHost(int target_port) {
+int tcNonceToHost(int target_port, int extra) {
     tcsec_ctx *s = &tx[target_port];
     bufClear(s);
-    bufAppend(s, ChallengeTag, sizeof(ChallengeTag));
-    return tcSendIV(s, target_port, tctKeyN, tctRNGfunction);
+    bufAddChar(s, HOST_TAG_NEW_TH);
+    return tcSendIV(s, target_port, tctKeyN, tctRNGfunction, extra);
 }
 
 /** Target receives the host's nonce
@@ -53,8 +53,9 @@ int tcNonceFromHost(int target_port) {
 
 /** Wipe crypto state for all ports
  */
-void tcTargetInit(void) {
+int tcTargetInit(void) {
     memset(tx, 0, sizeof(tx));
     memset(rx, 0, sizeof(rx));
+    return sizeof(rx) + sizeof(tx);
 }
 

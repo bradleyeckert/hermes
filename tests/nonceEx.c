@@ -23,16 +23,16 @@ int TestNonceExchange(int error) {
     if ((error & 0x80) != 0) error2 = error;
     if (!error1 && error) error1++;
     if (!error2 && error) error2++;
-    int r = tcNonceToHost(0);
+    int r = tcNonceToHost(0, 0);
 	if (r) return r;
 	moveSrcToDest(tc_target_tx(0), tc_host_rx(0), error1);
-	tc_host_rx(0)->tail = 3;                        // skip the message tag
+	tc_host_rx(0)->tail = 1;        // skip the message tag
 	r = tcNonceFromTarget(0);
 	if (r) return r & ~0x10;
-	r = tcNonceToTarget(0);
+	r = tcNonceToTarget(0, 0);
 	if (r) return r & ~0x20;
 	moveSrcToDest(tc_host_tx(0), tc_target_rx(0), error2);
-	tc_target_rx(0)->tail = 3;     // skip the message tag
+	tc_target_rx(0)->tail = 1;      // skip the message tag
 	r = tcNonceFromHost(0);
 	if (r) return r & ~0x30;
     return 0;
@@ -41,7 +41,7 @@ int TestNonceExchange(int error) {
 #define TESTS 100000
 
 int main() { // quickie tests:
-	tcTargetInit();
+	printf("%d bytes of RAM used by target contexts\n", tcTargetInit());
 	clock_t time0 = clock();
 	printf("Testing %d nonce exchange with no error insertion\n", TESTS);
 	for (int i = 0; i < TESTS; i++) {
@@ -52,7 +52,6 @@ int main() { // quickie tests:
         }
 	}
 	printf("Testing %d nonce exchange with error insertion\n", TESTS);
-	tcTargetInit();
 	for (int i = 1; i <= TESTS; i++) {
         int err = TestNonceExchange(i);
         if (!err) {

@@ -36,35 +36,36 @@ void bufClear(tcsec_ctx *s) {
     s->head = s->tail = 0;
 }
 
-void bufAppend(tcsec_ctx *s, const uint8_t *src, int len) {
-    for (int i = 0; i < len; i++) {
-        s->buf[s->head] = *src++;
-        s->head = (s->head + 1) & (TC_BUFSIZE - 1);
-    }
+void bufAddChar(tcsec_ctx *s, uint8_t c) {
+    s->buf[s->head] = c;
+    s->head = (s->head + 1) & (TC_BUFSIZE - 1);
 }
 
 /*
 Append a tunneled IV to the buffer in s. The HMAC spans the challenge. A challenge
 is a random 24-bit plaintext IV, another random 24-bit encrypted IV, and an HMAC.
 */
-int tcSendIV(tcsec_ctx *s, int port, keyFn keypointer, rngFn random) {
+int tcSendIV(tcsec_ctx *s, int port, keyFn keypointer, rngFn random, int extra) {
+    bufAddChar(s, 1 + 2*IV_LENGTH + HASH_LENGTH + extra);
+    bufAddChar(s, TC_NONCE_FORMAT);                     // format is plaintext
     unsigned int keyID = port * KEYS_PER_PORT;
     const uint8_t *key = keypointer(keyID+2);
     if (key == NULL)
         return TC_ERROR_MISSING_KEY;
     memcpy(s->hkey, key, sizeof(s->hkey));              // initial HMAC key
     unsigned int h = s->head;
-	int r = random(&s->buf[h], IV_LENGTH);              // preliminary IV
+	int r = random(&s->buf[h], IV_LENGTH);              // X is fixed-length
 	if (r)
         return r;                                       // RNG failure
     key = keypointer(keyID);
     if (key == NULL)
         return TC_ERROR_MISSING_KEY;
     xchacha_keysetup((void*)s, key, &s->buf[h]);        // used locally too
-    uint8_t *temp = &s->buf[TC_BUFSIZE - IV_LENGTH];
-	r = random(temp, IV_LENGTH);
-	xchacha_encrypt_bytes((void*)s, temp, &s->buf[h+IV_LENGTH], IV_LENGTH);
-	s->head = h + IV_LENGTH * 2;
+    int Ysize = IV_LENGTH + extra;                      // Y can have extra length
+    uint8_t *temp = &s->buf[TC_BUFSIZE - Ysize];
+	r = random(temp, Ysize);
+	xchacha_encrypt_bytes((void*)s, temp, &s->buf[h+IV_LENGTH], Ysize);
+	s->head = h + IV_LENGTH + Ysize;
     xchacha_keysetup((void*)s, key, temp);              // final IV for tx
     uint64_t t = siphash24(&s->buf[h], s->head-h, (uint8_t*)&s->hkey);
     s->hkey[0] += 1;
@@ -77,26 +78,30 @@ int tcSendIV(tcsec_ctx *s, int port, keyFn keypointer, rngFn random) {
 Receive a tunneled IV in buffer s. The HMAC spans the message.
 */
 int tcReceiveIV(tcsec_ctx *s, int port, keyFn keypointer) {
-    unsigned int keyID = port * KEYS_PER_PORT;
+    uint8_t length = s->buf[s->tail++] - (HASH_LENGTH+1);
+    uint8_t format = s->buf[s->tail++];
     uint16_t tail = s->tail;
-    uint16_t head = s->head;
+    if (format)
+        return TC_ERROR_BAD_FORMAT;
+    unsigned int keyID = port * KEYS_PER_PORT;
     const uint8_t *key = keypointer(keyID+2);
     if (key == NULL)
         return TC_ERROR_MISSING_KEY;
     memcpy(s->hkey, key, sizeof(s->hkey));              // initial HMAC key
-    uint64_t *expected = (uint64_t *)&s->buf[head - HASH_LENGTH];
-    head -= HASH_LENGTH;
-    uint64_t actual = siphash24(&s->buf[tail], head-tail, (uint8_t*)&s->hkey);
+    uint64_t *expected = (uint64_t *)&s->buf[tail+length];
+    uint64_t actual = siphash24(&s->buf[tail], length, (uint8_t*)&s->hkey);
     s->hkey[0] += 1;
-    if (actual != *expected)
+    if (actual != *expected)                            // check the HMAC
         return TC_ERROR_BAD_HMAC;
     key = keypointer(keyID);
     if (key == NULL)
         return TC_ERROR_MISSING_KEY;
     xchacha_keysetup((void*)s, key, &s->buf[tail]);
     tail += IV_LENGTH;
-    uint8_t *newIV = &s->buf[TC_BUFSIZE - IV_LENGTH];
-    xchacha_decrypt_bytes((void*)s, &s->buf[tail], newIV, IV_LENGTH);
+    length -= IV_LENGTH;
+    uint8_t *newIV = &s->buf[TC_BUFSIZE - length];
+    xchacha_decrypt_bytes((void*)s, &s->buf[tail], newIV, length);
     xchacha_keysetup((void*)s, key, newIV);
+    s->tail = tail + length + HASH_LENGTH;
     return 0;
 }

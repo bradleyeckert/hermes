@@ -8,28 +8,35 @@ One approach to the problem is to eliminate the tether in production devices. If
 
 Assuming the host side of the tether is a secure environment simplifies things considerably. Pre-distributed keys avoid the headaches of public key exchange. While TLS style PKE is often secure, HTTPS does not consider self-signed certificates secure. Even without Man-in-the-Middle attacks snatching keys, PKE small enough for embedded systems is not very quantum-resistant.
 
-PKE is avoided altogether. The host is under the control of the same organization that controls all of the targets. For example, the target's manufacturer. The manufacturer would be responsible for key management, key rotation, and provisioning of targets with unique keys. This use case is similar to that of Mifare DESFire cards: many targets, few hosts. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it. 
+PKE is avoided altogether. The host is under the control of the same organization that controls all of the targets. For example, the target's manufacturer. The manufacturer would be responsible for key management, key rotation, and provisioning of targets with unique keys. This use case is similar to that of Mifare DESFire cards: many targets, few hosts. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it.
 
-All messages are authenticated with an HMAC using the XChaCha20 stream cipher and Siphash keyed hash. A communication session starts with nonce exchange. If tether synchronization is lost, nonce exchange fixes it. Nonce exchange (or nonce handshake) occurs in two steps:
+## Nonce forwarding
+
+All messages are authenticated with an HMAC using the XChaCha20 stream cipher and Siphash keyed hash. A communication session starts with nonce forwarding. If tether synchronization is lost, nonce forwarding fixes it. Nonce exchange (or nonce handshake) occurs in two steps:
 
 1. The host sends a nonce to the target
 2. The target sends a nonce to the host
 
-Nonce wrapping is facilitatied by AEAS, making for a simple handshake. Nonce wrapping could be used for one-way communication too. The message would start with a wrapped nonce and then use that nonce to encrypt the rest of the message. The purpose of that is to avoid keystream reuse. A wrapped nonce has three components:
+Nonce wrapping is facilitatied by authenticated XChaCha20, making for simple but secure nonce transfer. Nonce wrapping could be used for one-way communication too. The message would start with a wrapped nonce and then use that nonce to encrypt the rest of the message. The purpose of that is to avoid keystream reuse. 
 
-1. X: 192-bit random nonce
-2. Y: 192-bit random nonce encrypted with key KE and nonce X
-3. 64-bit HMAC of X and Y using key KH
+A wrapped nonce has four components:
+
+1. 3-byte header: Tag, length, format (length includes format and the following data)
+2. X: 192-bit random nonce
+3. Y: 192-bit random nonce encrypted with key KE and nonce X
+4. 64-bit HMAC of X and Y using key KH
 
 The receiving end checks the HMAC using KH and if it's good, decrypts Y using KE and X. It then initializes XChaCha20 with KE and Y.
 
 An attacker can see X but not tamper with it. X is there to randomize the nonce of the Y message. If KE and KH are known, X could be used to recover Y, revealing any messages encrypted using those keys. The nonces protect against analysis and replay attacks.
 
+The wrapped nonce packet contains length byte N, which is 57 for the above packet. The number of bytes in Y is N-33. Increasing N to 89 would include a random 32-byte user nonce to support add-ons like AES-256-CBC. The maximum allowed N is 255 (subject to buffer space) which would give a Y of 222 bytes.
+
 ## AEAD encrypted 2-way traffic
 
-The nonce exchange initializes XChaCha20. The keystream is used in short bursts, so each tether command (or response) is encrypted with a small part of the keystream. Ciphertext versions of the original plaintext message have an 8-byte HMAC appended.
+Nonce forwarding initializes XChaCha20. The keystream is used in short bursts, so each tether command (or response) is encrypted with a small part of the keystream. Ciphertext versions of the original plaintext message have an 8-byte HMAC appended.
 
-Tether messages consist of a plaintext tag to identify the message type and an AEAD encrypted message. The HMAC key is incremented by 1 after each message. If there is a communication bit error, the HMAC fails and synchronization is lost. After that, all HMACs will fail. So, if a HMAC fails a new nonce exchange is performed immediately.
+Tether messages consist of a plaintext tag to identify the message type and an AEAD encrypted message. The HMAC key is incremented by 1 after each message. If there is a communication bit error, the HMAC fails and synchronization is lost. After that, all HMACs will fail. So, if a HMAC fails new nonce forwarding is performed immediately.
 
 ## Target hardware requirements
 

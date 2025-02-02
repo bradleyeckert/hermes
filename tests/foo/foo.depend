@@ -68,7 +68,7 @@
 1737765250 c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.h
 	<stdint.h>
 
-1738448693 source:c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.c
+1738500294 source:c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.c
 	<stdlib.h>
 	<stdint.h>
 	<string.h>
@@ -78,7 +78,7 @@
 	"tctarget.h"
 	"tctargetHW.h"
 
-1738449063 c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.h
+1738500321 c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.h
 	<stdint.h>
 	"tcconfig.h"
 
@@ -95,18 +95,18 @@
 	"../../src/tcsecure/tchost.h"
 	"../../src/tcsecure/tctarget.h"
 
-1738449020 c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.h
+1738500120 c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.h
 	<stdint.h>
 	"tcconfig.h"
 
 1737739664 c:\users\brad\documents\github\hermes\src\libs\poly1305-donna\poly1305-donna.h
 	<stddef.h>
 
-1738443470 c:\users\brad\documents\github\hermes\src\tcsecure\tchost.h
+1738499682 c:\users\brad\documents\github\hermes\src\tcsecure\tchost.h
 	<stdint.h>
 	"tcconfig.h"
 
-1738443567 source:c:\users\brad\documents\github\hermes\src\tcsecure\tchost.c
+1738499759 source:c:\users\brad\documents\github\hermes\src\tcsecure\tchost.c
 	<stdlib.h>
 	<stdint.h>
 	<string.h>
@@ -117,7 +117,7 @@
 	"tchostHW.h"
 	"tcconfig.h"
 
-1738448987 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.c
+1738499129 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.c
 	<stdlib.h>
 	<stdint.h>
 	<string.h>
@@ -147,10 +147,11 @@
 	<stdio.h>
 	"tctargetHW.h"
 
-1738454247 source:c:\users\brad\documents\github\hermes\tests\nonceex.c
+1738499777 source:c:\users\brad\documents\github\hermes\tests\nonceex.c
 	<stdio.h>
 	<stdlib.h>
 	<string.h>
+	<time.h>
 	"../src/tcsecure/tchost.h"
 	"../src/tcsecure/tctarget.h"
 
