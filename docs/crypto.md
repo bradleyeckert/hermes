@@ -44,4 +44,8 @@ The AEAD should have built-in-self-test code to ensure that it hasn't been tampe
 
 ## Crypto functions
 
-The `XChaCha20` and `csiphash` libraries are included as Git submodules. The tether's `tcsecure` library calls functions in them. It also calls platform-specific functions in `tcplatform.c`.
+The `XChaCha20` and `csiphash` libraries are included as Git submodules. They should be used without modification so they don't have to be forked.
+
+The XChaCha20-csiphash combination was chosen for AEAD because it is cryptographically strong, resistant to side-channel attacks, and doesn't use a lot of RAM. SipHash is not a one-way function, but for keyed HMAC that doesn't matter. It's not bad for lightweight AEAD.
+
+If your industry guidelines require FIPS-140 encryption, messages should be encrypted by AES-CBC or AES-GCM before re-encryption with Xchacha20. The keyed HMAC already protects against bit-flipping attacks. Double encryption costs little and it covers the possibility that AES has a weakness that only the NSA knows about.

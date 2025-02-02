@@ -52,7 +52,7 @@
 		<Unit filename="../../src/tcsecure/tctargetHW.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="main.c">
+		<Unit filename="../nonceEx.c">
 			<Option compilerVar="CC" />
 		</Unit>
 		<Extensions>

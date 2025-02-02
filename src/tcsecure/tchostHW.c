@@ -23,7 +23,7 @@ static uint8_t tcKeyArray[16*MAXKEYS] = {
 Point to a 128-bit key in a set of keys. Keys may concatenate to 256-bit.
 */
 const uint8_t * tchKeyN(unsigned int n) {
-	if (n >= MAXKEYS) n = MAXKEYS - 1;
+	if (n >= MAXKEYS) return NULL;
 	return &tcKeyArray[n * 16];
 }
 

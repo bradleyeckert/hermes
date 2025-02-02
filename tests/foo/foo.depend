@@ -78,7 +78,7 @@
 	"tctarget.h"
 	"tctargetHW.h"
 
-1738443678 c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.h
+1738449063 c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.h
 	<stdint.h>
 	"tcconfig.h"
 
@@ -117,7 +117,7 @@
 	"tchostHW.h"
 	"tcconfig.h"
 
-1738445802 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.c
+1738448987 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.c
 	<stdlib.h>
 	<stdint.h>
 	<string.h>
@@ -130,7 +130,7 @@
 1738436147 c:\users\brad\documents\github\hermes\src\tcsecure\tctargethw.h
 	<stdint.h>
 
-1738445847 source:c:\users\brad\documents\github\hermes\src\tcsecure\tchosthw.c
+1738449977 source:c:\users\brad\documents\github\hermes\src\tcsecure\tchosthw.c
 	<stdint.h>
 	<stdlib.h>
 	<string.h>
@@ -140,10 +140,17 @@
 1738435714 c:\users\brad\documents\github\hermes\src\tcsecure\tchosthw.h
 	<stdint.h>
 
-1738445896 source:c:\users\brad\documents\github\hermes\src\tcsecure\tctargethw.c
+1738449983 source:c:\users\brad\documents\github\hermes\src\tcsecure\tctargethw.c
 	<stdint.h>
 	<stdlib.h>
 	<string.h>
 	<stdio.h>
 	"tctargetHW.h"
+
+1738454247 source:c:\users\brad\documents\github\hermes\tests\nonceex.c
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	"../src/tcsecure/tchost.h"
+	"../src/tcsecure/tctarget.h"
 
