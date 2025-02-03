@@ -52,10 +52,11 @@ int tcNonceFromHost(int target_port) {
 }
 
 /** Wipe crypto state for all ports
+ * @return statically allocated bytes of RAM
  */
 int tcTargetInit(void) {
     memset(tx, 0, sizeof(tx));
     memset(rx, 0, sizeof(rx));
-    return sizeof(rx) + sizeof(tx);
+    return sizeof(tx) + sizeof(rx);
 }
 

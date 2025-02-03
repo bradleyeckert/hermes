@@ -1,0 +1,26 @@
+# depslib dependency file v1.0
+1738556787 source:c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\test.c
+	<stdio.h>
+	<errno.h>
+	<stdlib.h>
+	<stdint.h>
+	<string.h>
+	"xchacha20.h"
+
+1737765250 c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.h
+	<stdint.h>
+
+1738556756 source:c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20s.c
+	<stdio.h>
+	<stdlib.h>
+	<stdint.h>
+	"xchacha20.h"
+	"string.h"
+
+1738560920 source:c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.c
+	<stdio.h>
+	<stdlib.h>
+	<stdint.h>
+	"xchacha20.h"
+	"string.h"
+

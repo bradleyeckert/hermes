@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include "tcconfig.h"
 
+#define VERBOSE
+
 #define TC_BUFSIZE 128			        /* power of 2, at least 128 */
 #define TARGET_PORTS 1
 #define HOST_PORTS 1
@@ -30,7 +32,7 @@
 
 typedef struct
 {	uint32_t input[16];		// xchacha state
-    uint64_t hkey[2];		// siphash key
+    uint64_t hkey[2];		// siphash key (incremented after each message)
 	uint16_t tail;
 	uint16_t head;
 	uint8_t ready;          // buf is ready to process
@@ -38,7 +40,7 @@ typedef struct
 } tcsec_ctx;
 
 // There is no header file for cspihash.c so declare the function here
-uint64_t siphash24(const void *src, unsigned long src_sz, const uint8_t key[16]);
+uint64_t siphash24(const void *src, unsigned long src_sz, const char key[16]);
 
 int tcEncrypt(tcsec_ctx *s, int port, uint8_t *src, int len);
 int tcDecrypt(tcsec_ctx *s, int port, uint8_t *dest, int *len);
@@ -53,5 +55,7 @@ uint8_t tcGetch(tcsec_ctx *s);
 int tcSendIV(tcsec_ctx *s, int port, keyFn getkey, rngFn random, int extra);
 int tcReceiveIV(tcsec_ctx *s, int port, keyFn getkey);
 
+void dump(uint8_t *src, uint8_t len);
+void showCTX (tcsec_ctx *s);
 
 #endif /* __TCCONFIG_H__ */

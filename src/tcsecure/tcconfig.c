@@ -13,7 +13,7 @@
 void dump(uint8_t *src, uint8_t len) {
     if (len) {
         for (uint8_t i = 0; i < len; i++) {
-            if ((i % 24) == 0) printf("\n");
+            if ((i % 30) == 0) printf("\n");
             printf("%02X ", src[i]);
         }
     }
@@ -21,10 +21,10 @@ void dump(uint8_t *src, uint8_t len) {
 
 void showCTX (tcsec_ctx *s) {   // dump context info
 	printf("tcsec_ctx %p contents: \nhead=%d, tail=%d", s, s->head, s->tail);
-	int size = (s->head - s->tail) & (TC_BUFSIZE - 1);
-	if (s->tail) printf(", (size=%d)", size);
-	if (size) dump(&s->buf[s->tail], size);
-    printf("\n");
+	dump((uint8_t *)s->hkey, 16);
+	printf("<-- hkey");
+	dump(s->buf, s->head);
+    printf("<-- buf\n");
 }
 
 /*
@@ -98,7 +98,7 @@ int tcSendIV(tcsec_ctx *s, int port, keyFn keypointer, rngFn random, int Ysize) 
 	xchacha_encrypt_bytes((void*)s, temp, &s->buf[h+IV_LENGTH], Ysize);
 	s->head = h + IV_LENGTH + Ysize;
     xchacha_keysetup((void*)s, key, temp);              // final IV for tx
-    uint64_t t = siphash24(&s->buf[h], s->head-h, (uint8_t*)&s->hkey);
+    uint64_t t = siphash24(&s->buf[h], s->head-h, (char*)&s->hkey);
     s->hkey[0] += 1;
     tcAppend(s, (uint8_t *)&t, sizeof t);
 	return r;
@@ -126,7 +126,7 @@ int tcReceiveIV(tcsec_ctx *s, int port, keyFn keypointer) {
         return TC_ERROR_MISSING_KEY;
     memcpy(s->hkey, key, sizeof(s->hkey));              // save HMAC key
     uint64_t *expected = (uint64_t *)&s->buf[tail+length];
-    uint64_t actual = siphash24(&s->buf[tail], length, (uint8_t*)&s->hkey);
+    uint64_t actual = siphash24(&s->buf[tail], length, (char*)&s->hkey);
     s->hkey[0] += 1;
     if (actual != *expected)                            // check the HMAC
         return TC_ERROR_BAD_HMAC;
