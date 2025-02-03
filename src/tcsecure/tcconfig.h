@@ -32,10 +32,12 @@
 
 typedef struct
 {	uint32_t input[16];		// xchacha state
-    uint64_t hkey[2];		// siphash key (incremented after each message)
+    uint8_t chabuf[64];     // xchacha keystream buffer
+    uint8_t chaptr;         // xchacha keystream pointer
+	uint8_t ready;          // buf is ready to process
 	uint16_t tail;
 	uint16_t head;
-	uint8_t ready;          // buf is ready to process
+    uint64_t hkey[2];		// siphash key (incremented after each message)
 	uint8_t buf[TC_BUFSIZE];
 } tcsec_ctx;
 

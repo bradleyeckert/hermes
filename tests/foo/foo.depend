@@ -60,15 +60,17 @@
 
 1738067479 c:\users\brad\documents\github\hermes\src\libs\micro-ecc\curve-specific.inc
 
-1737765250 source:c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.c
+1738570251 source:c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.c
+	<stdio.h>
 	<stdlib.h>
 	<stdint.h>
 	"xchacha20.h"
+	"string.h"
 
-1737765250 c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.h
+1738570020 c:\users\brad\documents\github\hermes\src\libs\xchacha20\src\xchacha20.h
 	<stdint.h>
 
-1738540041 source:c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.c
+1738540339 source:c:\users\brad\documents\github\hermes\src\tcsecure\tctarget.c
 	<stdlib.h>
 	<stdint.h>
 	<string.h>
@@ -95,7 +97,7 @@
 	"../../src/tcsecure/tchost.h"
 	"../../src/tcsecure/tctarget.h"
 
-1738540469 c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.h
+1738570537 c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.h
 	<stdint.h>
 	"tcconfig.h"
 
@@ -117,7 +119,7 @@
 	"tchostHW.h"
 	"tcconfig.h"
 
-1738539917 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.c
+1738571547 source:c:\users\brad\documents\github\hermes\src\tcsecure\tcconfig.c
 	<stdlib.h>
 	<stdint.h>
 	<string.h>
@@ -147,7 +149,7 @@
 	<stdio.h>
 	"tctargetHW.h"
 
-1738538906 source:c:\users\brad\documents\github\hermes\tests\nonceex.c
+1738540395 source:c:\users\brad\documents\github\hermes\tests\nonceex.c
 	<stdio.h>
 	<stdlib.h>
 	<string.h>

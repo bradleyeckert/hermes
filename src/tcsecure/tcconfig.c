@@ -56,6 +56,12 @@ void tcAppend(tcsec_ctx *s, uint8_t *src, uint8_t len) {
     }
 }
 
+void tcCryptAppend(tcsec_ctx *s, uint8_t *src, uint8_t len) {
+    while (len--) {
+        tcPutch(s, *src++ ^ xchacha_next((void*)s));
+    }
+}
+
 static int testWrap(int len) {
     if (len > (TC_BUFSIZE - 4)) {
         return TC_ERROR_BUFFER_TEARING; }
@@ -95,8 +101,8 @@ int tcSendIV(tcsec_ctx *s, int port, keyFn keypointer, rngFn random, int Ysize) 
     xchacha_keysetup((void*)s, key, &s->buf[h]);        // used locally too
     uint8_t *temp = &s->buf[TC_BUFSIZE - Ysize];
 	r = random(temp, Ysize);                            // generate tunneled IV
-	xchacha_encrypt_bytes((void*)s, temp, &s->buf[h+IV_LENGTH], Ysize);
-	s->head = h + IV_LENGTH + Ysize;
+	s->head = h + IV_LENGTH;
+	tcCryptAppend(s, temp, Ysize);
     xchacha_keysetup((void*)s, key, temp);              // final IV for tx
     uint64_t t = siphash24(&s->buf[h], s->head-h, (char*)&s->hkey);
     s->hkey[0] += 1;
