@@ -1,4 +1,4 @@
 # hermes
-Secure cross-testing environment
+AEAD-secured ports (UARTs, etc.)
 
-Status: Planning stage, working on secure UART
+Status: Early dev of paired comms
