@@ -1,0 +1,6 @@
+[submodule "src/siphash"]
+	path = src/siphash
+	url = https://github.com/bradleyeckert/siphash
+[submodule "src/xchacha"]
+	path = src/xchacha
+	url = https://github.com/bradleyeckert/xchacha
