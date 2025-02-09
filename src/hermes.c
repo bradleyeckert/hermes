@@ -114,7 +114,7 @@ void hermesNoPorts(void) {
 
 // Add a secure port
 void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol,
-                   hermes_plainFn boiler, hermes_plainFn plain, hermes_cyphrFn ciphr,
+                   hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *enc_key, const uint8_t *hmac_key) {
     memset(ctx, 0, sizeof(port_ctx));
     ctx->tmFn = plain;
@@ -144,7 +144,7 @@ int hermesSend(port_ctx *ctx, uint8_t *m, int bytes){
     while (bytes--) SendByte(ctx, *m++);
     SendTxHash(ctx);
     ctx->hmacIVt += 1;
-    if (ctx->hmacIVt == 0) ctx->state = 0; // rolled over
+    if (ctx->hmacIVt == 0) ctx->tReady = 0; // rolled over
     return 0;
 }
 
@@ -173,7 +173,8 @@ int hermesPutc(port_ctx *ctx, int c){
             hermesPair(ctx);
             ctx->state = 0;
             break;
-        default: return HERMES_ERROR_UNKNOWN_CMD;
+        default:
+            return HERMES_ERROR_UNKNOWN_CMD;
         }
         return 0;
     }
@@ -295,22 +296,30 @@ next_header_char:
     return r;
 }
 
+// Size of message available to accept
+int hermesAvail(port_ctx *ctx){
+    if (!ctx->rReady) return 0;
+    if (!ctx->tReady) return 0;
+    return ctx->avail << 6;
+}
+
 // -----------------------------------------------------------------------------
 // Some default values for testing
 
 port_ctx Alice;
 port_ctx Bob;
+int snoopy = 1;
 
 // Connect Alice to Bob via a virtual null-modem cable
 
 static void AliceCiphertextOutput(uint8_t c) {
-    printf("%02X-", c);
+    if (snoopy) printf("%02X-", c);
     int r = hermesPutc(&Bob, c);
     if (r) printf("\nAlice saw return code %d ", r);
 }
 
 static void BobCiphertextOutput(uint8_t c) {
-    printf("%02X~", c);
+    if (snoopy) printf("%02X~", c);
     int r = hermesPutc(&Alice, c);
     if (r) printf("\nAlice saw return code %d ", r);
 }
@@ -328,11 +337,11 @@ static void BoilerHandlerA(const uint8_t *src, uint32_t length) {
 static void BoilerHandlerB(const uint8_t *src, uint32_t length) {
     printf("\nBob received boilerplate {%s}\n", src);
 }
-//                                      0123456789abcdef0123456789abcdef
-const uint8_t my_encryption_key[32] = {"Do not use this encryption key!"};
-const uint8_t my_signature_key[16] =  {"Or this key..."};
-const uint8_t AliceBoiler[16] =       {"hms0Alice"};
-const uint8_t BobBoiler[16] =         {"hms0Bob"};
+//                                0123456789abcdef0123456789abcdef
+uint8_t my_encryption_key[32] = {"Do not use this encryption key!"};
+uint8_t my_signature_key[16] =  {"Or this key..."};
+const uint8_t AliceBoiler[16] = {"hms0Alice"};
+const uint8_t BobBoiler[16] =   {"hms0Bob"};
 
 #define MY_PROTOCOL 0
 
@@ -351,6 +360,6 @@ int main() {
     if (tests & 1) hermesBoiler(&Alice);
     if (tests & 2) hermesBoiler(&Bob);
     if (tests & 4) hermesPair(&Alice);
-    printf("\nAlice=%d%d, Bob=%d%d", Alice.rReady, Alice.tReady, Bob.rReady, Bob.tReady);
+    printf("\nAvailability: Alice=%d, Bob=%d", hermesAvail(&Alice), hermesAvail(&Bob));
     return 0;
 }

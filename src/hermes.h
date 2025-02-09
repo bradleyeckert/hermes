@@ -5,19 +5,19 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_BOILER_LENGTH    16      /* boilerplate length */
-#define HERMES_IV_LENGTH        16      /* Bytes in IV       */
-#define HERMES_HMAC_LENGTH      16      /* Bytes in HMAC       */
-#define HERMES_RXBUF_LENGTH    128      /* RX buffer length    */
-#define HERMES_TXBUF_LENGTH    128      /* TX buffer length    */
-
-// Message tags
-#define HERMES_TAG_END          18      /* signal end of message (don't change) */
-#define HERMES_TAG_GET_BOILER   20      /* request boilerplate */
-#define HERMES_TAG_BOILERPLATE  21      /* boilerplate */
-#define HERMES_TAG_HARD_RESET   22      /* signal a new 2-way IV init */
-#define HERMES_TAG_SOFT_RESET   23      /* signal a new 1-way IV init */
-#define HERMES_TAG_MESSAGE      24      /* signal an encrypted message */
+#define HERMES_BOILER_LENGTH       16   /* boilerplate length */
+#define HERMES_IV_LENGTH           16   /* Bytes in IV       */
+#define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC       */
+#define HERMES_RXBUF_LENGTH       128   /* RX buffer length    */
+#define HERMES_TXBUF_LENGTH       128   /* TX buffer length    */
+                                  
+// Message tags                   
+#define HERMES_TAG_END             18   /* signal end of message (don't change) */
+#define HERMES_TAG_GET_BOILER      20   /* request boilerplate */
+#define HERMES_TAG_BOILERPLATE     21   /* boilerplate */
+#define HERMES_TAG_HARD_RESET      22   /* signal a new 2-way IV init */
+#define HERMES_TAG_SOFT_RESET      23   /* signal a new 1-way IV init */
+#define HERMES_TAG_MESSAGE         24   /* signal an encrypted message */
 
 // Error tags
 #define HERMES_ERROR_INVALID_STATE  1   /* FSM reached an invalid state */
@@ -30,7 +30,7 @@
 #define HERMES_ERROR_INVALID_LENGTH 8
 
 // Commands
-#define HERMES_CMD_RESET  256   /* Reset the FSM and re-pair the connection */
+#define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
 
 /*
 Stream I/O is through functions. Bytes are transmitted by an output function.
@@ -38,14 +38,14 @@ Bytes are received (as a function parameter) by processing them with an FSM.
 The hermesIn function returns an I/O result (0 if okay).
 
 The FSM is not full-duplex. If the FSM has wait for the UART transmitter
-(hermes_cyphrFn is hung), it may miss incoming bytes. This can be solved 3 ways:
+(hermes_ciphrFn is hung), it may miss incoming bytes. This can be solved 3 ways:
 
 - Operate in half-duplex mode
 - Buffer the input with a FIFO
 - Buffer the output with a FIFO
 */
 
-typedef void (*hermes_cyphrFn)(uint8_t c);   // output raw ciphertext byte
+typedef void (*hermes_ciphrFn)(uint8_t c);   // output raw ciphertext byte
 typedef void (*hermes_plainFn)(const uint8_t *src, uint32_t length);
 typedef int (*hermes_rngFn)  (uint8_t *dest, int length);
 
@@ -55,7 +55,6 @@ typedef int (*hmac_finalFn)(size_t *ctx, uint8_t *out);
 typedef void (*crypt_initFn)(size_t *ctx, const uint8_t *key, const uint8_t *iv);
 typedef void (*crypt_blockFn)(size_t *ctx, const uint8_t *in, uint8_t *out, int mode);
 
-// about 80+HERMES_RXBUF_LENGTH+HERMES_TXBUF_LENGTH bytes per port
 typedef struct
 {   xChaCha_ctx *rcCtx;     // receiver encryption context
 	siphash_ctx *rhCtx;     // receiver HMAC context
@@ -65,7 +64,7 @@ typedef struct
     uint32_t hmacIVt;       // transmitter HMAC IV
     hermes_plainFn boilFn;  // boilerplate handler (from hermesPutc)
     hermes_plainFn tmFn;    // plaintext handler (from hermesPutc)
-    hermes_cyphrFn tcFn;    // ciphertext transmit function
+    hermes_ciphrFn tcFn;    // ciphertext transmit function
     hmac_initFn hInitFn;    // HMAC initialization function
     hmac_putcFn hPutcFn;    // HMAC putc function
     hmac_finalFn hFinalFn;  // HMAC finalization function
@@ -82,9 +81,10 @@ typedef struct
     uint8_t protocol;       // which AEAD protocol is in use
     uint8_t state;          // of the FSM
     uint8_t escaped;        // assembling a 2-byte escape sequence
+    // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
-    uint8_t avail;          // max size of message you can send = avail*64
+    uint8_t avail;          // max size of message you can send = avail*64 bytes
 } port_ctx;
 
 
@@ -106,7 +106,7 @@ void hermesNoPorts(void);
  * @param hmac_key    32-byte HMAC key
  */
 void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol,
-                   hermes_plainFn boiler, hermes_plainFn plain, hermes_cyphrFn ciphr,
+                   hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *enc_key, const uint8_t *hmac_key);
 
 
