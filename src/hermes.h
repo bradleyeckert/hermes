@@ -8,7 +8,8 @@
 #define HERMES_BOILER_LENGTH    16      /* boilerplate length */
 #define HERMES_IV_LENGTH        16      /* Bytes in IV       */
 #define HERMES_HMAC_LENGTH      16      /* Bytes in HMAC       */
-#define HERMES_RXBUF_LENGTH    256      /* Buffer length    */
+#define HERMES_RXBUF_LENGTH    128      /* RX buffer length    */
+#define HERMES_TXBUF_LENGTH    128      /* TX buffer length    */
 
 // Message tags
 #define HERMES_TAG_END          18      /* signal end of message (don't change) */
@@ -24,7 +25,9 @@
 #define HERMES_ERROR_TRNG_FAILURE   3   /* Bad RNG value */
 #define HERMES_ERROR_MISSING_KEY    4
 #define HERMES_ERROR_BAD_HMAC       5
-#define HERMES_ERROR_BAD_FORMAT     6
+#define HERMES_ERROR_BAD_HMAC_LEN   6
+#define HERMES_ERROR_WRONG_PROTOCOL 7
+#define HERMES_ERROR_INVALID_LENGTH 8
 
 // Commands
 #define HERMES_CMD_RESET  256   /* Reset the FSM and re-pair the connection */
@@ -52,7 +55,7 @@ typedef int (*hmac_finalFn)(size_t *ctx, uint8_t *out);
 typedef void (*crypt_initFn)(size_t *ctx, const uint8_t *key, const uint8_t *iv);
 typedef void (*crypt_blockFn)(size_t *ctx, const uint8_t *in, uint8_t *out, int mode);
 
-// about 80+HERMES_RXBUF_LENGTH bytes per port
+// about 80+HERMES_RXBUF_LENGTH+HERMES_TXBUF_LENGTH bytes per port
 typedef struct
 {   xChaCha_ctx *rcCtx;     // receiver encryption context
 	siphash_ctx *rhCtx;     // receiver HMAC context
@@ -72,37 +75,79 @@ typedef struct
     const uint8_t *ckey;    // encryption/decryption key
     const uint8_t *hkey;    // HMAC signing key
     uint8_t rxbuf[HERMES_RXBUF_LENGTH];
+    uint8_t txbuf[HERMES_TXBUF_LENGTH];
     uint16_t i;
     uint16_t length;        // received message length
-    uint8_t tag;
+    uint8_t tag;            // received message type
     uint8_t protocol;       // which AEAD protocol is in use
     uint8_t state;          // of the FSM
     uint8_t escaped;        // assembling a 2-byte escape sequence
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
+    uint8_t avail;          // max size of message you can send = avail*64
 } port_ctx;
 
-/** Input raw ciphertext (or command)
- * @param c   Incoming byte or command (command if > 255)
- * @return    0 if okay
- */
-int hermesPutc(port_ctx *ctx, int c);
 
+/** Clear the port list. Call before hermesAddPort.
+ *  May be used to wipe contexts before exiting an app so sensitive data
+ *  doesn't hang around in memory.
+ */
 void hermesNoPorts(void);
 
-int hermesPair(port_ctx *ctx);
 
-
-int hermesSend(port_ctx *ctx, uint8_t *m, int bytes);
-
-
-/** Initialize the context for hermesIn
- * @param c   Incoming byte or command (command if > 255)
- * @param out Output function for processing received packet
+/** Append to the port list.
+ * @param ctx         Port identifier
+ * @param boilerplate Plaintext port identification boilerplate
+ * @param protocol    AEAD protocol used: 0 = xchacha20-siphash
+ * @param boiler      Handler for received boilerplate (src, n)
+ * @param plain       Handler for received data (src, n)
+ * @param ciphr       Handler for char transmission (c)
+ * @param enc_key     32-byte encryption key
+ * @param hmac_key    32-byte HMAC key
  */
 void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol,
                    hermes_plainFn boiler, hermes_plainFn plain, hermes_cyphrFn ciphr,
                    const uint8_t *enc_key, const uint8_t *hmac_key);
 
+
+/** Input raw ciphertext (or command), such as received from a UART
+ * @param ctx Port identifier
+ * @param c   Incoming byte or command (command if > 255)
+ * @return    0 if okay, otherwise HERMES_ERROR_?
+ */
+int hermesPutc(port_ctx *ctx, int c);
+
+
+/** Trigger pairing. Resets the encrypted connection.
+ * @param ctx Port identifier
+ * @return    0 if okay, otherwise HERMES_ERROR_?
+ */
+int hermesPair(port_ctx *ctx);
+
+
+/** Trigger boilerplate.
+ * @param ctx Port identifier
+ * @return    0 if okay, otherwise HERMES_ERROR_?
+ * The received boilerplate comes out hermesAddPort's boiler function.
+ */
+void hermesBoiler(port_ctx *ctx);
+
+
+/** Send a message
+ * @param ctx   Port identifier
+ * @param m     Plaintext message to send
+ * @param bytes Length of message in bytes
+ * @return      0 if okay, otherwise HERMES_ERROR_?
+ */
+int hermesSend(port_ctx *ctx, uint8_t *m, int bytes);
+
+
+#if ((HERMES_RXBUF_LENGTH < 64) || (HERMES_RXBUF_LENGTH > 16320))
+#error Invalid value for HERMES_RXBUF_LENGTH
+#endif
+
+#if ((HERMES_TXBUF_LENGTH < 64) || (HERMES_TXBUF_LENGTH > 16320))
+#error Invalid value for HERMES_TXBUF_LENGTH
+#endif
 
 #endif /* __TCSTREAMS_H__ */

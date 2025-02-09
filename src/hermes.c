@@ -70,10 +70,14 @@ static void SendTxHash(port_ctx *ctx){
     ctx->tcFn(HERMES_TAG_END);
 }
 
-// Send: Tag[1], Length[2], ~Length[2], format[1], mIV[], cIV[], HMAC[]
+#define HDRlength 6 /* Header length (tag+len+~len)*/
+#define ADlength  1 /* Associated data length */
+
+// Send: Tag[1], Length[2], ~Length[2], format[1], mIV[], cIV[],
+// RXbufsize[1], HMAC[]
 static int SendIV(port_ctx *ctx, int tag) {
     SendHeader(ctx, tag,
-               HERMES_IV_LENGTH * 2 + HERMES_HMAC_LENGTH + 6);
+               HERMES_IV_LENGTH * 2 + HERMES_HMAC_LENGTH + HDRlength + ADlength);
     uint8_t mIV[HERMES_IV_LENGTH];
     uint8_t cIV[HERMES_IV_LENGTH];
     int r = 0;
@@ -91,6 +95,7 @@ static int SendIV(port_ctx *ctx, int tag) {
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
         SendByte(ctx, cIV[i]);
     }
+    SendByte(ctx, HERMES_RXBUF_LENGTH >> 6) ;
     SendTxHash(ctx);
     ctx->hmacIVt = 0;
     ctx->cInitFn((void *)&*ctx->tcCtx, ctx->ckey, cIV);
@@ -154,7 +159,8 @@ void hermesBoiler(port_ctx *ctx) {
     ctx->tcFn(HERMES_TAG_END);
 }
 
-#define S_END ctx->state = 8
+#define S_END ctx->state = 8;
+#define S_END_E(ior) ctx->state = 8; r = (ior); break;
 
 // Receive char or command from input stream
 int hermesPutc(port_ctx *ctx, int c){
@@ -197,12 +203,12 @@ int hermesPutc(port_ctx *ctx, int c){
         goto next_header_char;
     case 4: // lower ~length
         if (ctx->length != (c ^ 0xFF)) {
-badlength:  S_END;
+badlength:  S_END_E(HERMES_ERROR_INVALID_LENGTH)
         }
         goto next_header_char;
     case 5: // protocol
         if (ctx->protocol != c) {
-            S_END;
+            S_END_E(HERMES_ERROR_WRONG_PROTOCOL)
         }
 next_header_char:
         ctx->state++;
@@ -225,6 +231,7 @@ next_header_char:
             break;
         case HERMES_TAG_HARD_RESET:
         case HERMES_TAG_SOFT_RESET:             // receiving IV
+            ctx->rReady = 0;
             ctx->state = 9;
             break;
         default: break;
@@ -233,12 +240,12 @@ next_header_char:
         break;
     case 7: // get remaining boilerplate
         ctx->rxbuf[ctx->i++] = c;
-        temp = ctx->length - 6;
+        temp = ctx->length - HDRlength;
         i = ctx->i;
         if ((i == temp)                         // received length
             || (i == HERMES_RXBUF_LENGTH)) {    // or maximum length
             ctx->boilFn(ctx->rxbuf, temp);
-            S_END;
+            S_END
         }
         break;
     case 8: // wait for the end tag
@@ -248,23 +255,27 @@ next_header_char:
         break;
     case 9: // get remaining mIV, then cIV
         ctx->rxbuf[ctx->i++] = c;
-        temp = (ctx->length - 6) - HERMES_HMAC_LENGTH;
+        temp = ctx->length - (HDRlength + HERMES_HMAC_LENGTH + ADlength);
         i = ctx->i;
         if ((i == temp)                         // received length
             || (i == HERMES_RXBUF_LENGTH)) {    // or maximum length
             temp >>= 1;
             if (temp != HERMES_HMAC_LENGTH) {   // should not happen
-                return HERMES_ERROR_BAD_HMAC;
+                return HERMES_ERROR_BAD_HMAC_LEN;
             }
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, ctx->rxbuf);
             ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[temp], cIV, 1);
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, cIV);
-            ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->rxbuf);
-            ctx->i = 0;
             ctx->state = 10;
         }
         break;
-    case 10: // get HMAC
+    case 10: // get maximum message length
+        ctx->avail = (uint8_t)c;
+        ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->rxbuf);
+        ctx->i = 0;
+        ctx->state++;
+        break;
+    case 11: // get HMAC
         if (ctx->rxbuf[ctx->i++] != c) {
             ctx->state = 0;
             return HERMES_ERROR_BAD_HMAC;
@@ -274,7 +285,7 @@ next_header_char:
             if (ctx->tag == HERMES_TAG_HARD_RESET) {
                 r = SendIV(ctx, HERMES_TAG_SOFT_RESET);
             }
-            S_END;
+            S_END
         }
         break;
     default:
