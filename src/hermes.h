@@ -49,8 +49,10 @@ typedef int (*hermes_rngFn)  (uint8_t *dest, int length);
 typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, int hsize);
 typedef void (*hmac_putcFn)(size_t *ctx, uint8_t c);
 typedef int (*hmac_finalFn)(size_t *ctx, uint8_t *out);
+typedef void (*crypt_initFn)(size_t *ctx, const uint8_t *key, const uint8_t *iv);
+typedef void (*crypt_blockFn)(size_t *ctx, const uint8_t *in, uint8_t *out, int mode);
 
-// about 80+HERMES_RXBUF_LENGTH bytes per port
+// about 88+HERMES_RXBUF_LENGTH bytes per port
 typedef struct
 {   xChaCha_ctx *rcCtx;     // receiver encryption context
 	siphash_ctx *rhCtx;     // receiver HMAC context
@@ -64,6 +66,8 @@ typedef struct
     hmac_initFn hInitFn;    // HMAC initialization function
     hmac_putcFn hPutcFn;    // HMAC putc function
     hmac_finalFn hFinalFn;  // HMAC finalization function
+    crypt_initFn cInitFn;   // Encryption initialization function
+    crypt_blockFn cBlockFn; // Encryption block function
     const uint8_t *boil;    // boilerplate
     const uint8_t *ckey;    // encryption/decryption key
     const uint8_t *hkey;    // HMAC signing key
