@@ -1,0 +1,42 @@
+# depslib dependency file v1.0
+1739038959 source:c:\users\brad\documents\github\hermes\src\siphash\src\siphash.c
+	<stdint.h>
+	<string.h>
+	"siphash.h"
+
+1739038725 c:\users\brad\documents\github\hermes\src\siphash\src\siphash.h
+	<stdint.h>
+
+1739044635 source:c:\users\brad\documents\github\hermes\src\xchacha\src\xchacha.c
+	<stdint.h>
+	<string.h>
+	"xchacha.h"
+
+1739044726 c:\users\brad\documents\github\hermes\src\xchacha\src\xchacha.h
+	<stdint.h>
+
+1739056502 source:c:\users\brad\documents\github\hermes\src\hermes.c
+	<stdlib.h>
+	<stdint.h>
+	<string.h>
+	<stdio.h>
+	"xchacha/src/xchacha.h"
+	"siphash/src/siphash.h"
+	"hermes.h"
+	"hermesHW.h"
+
+1739054878 c:\users\brad\documents\github\hermes\src\hermes.h
+	<stdint.h>
+	"xchacha/src/xchacha.h"
+	"siphash/src/siphash.h"
+
+1738965854 c:\users\brad\documents\github\hermes\src\hermeshw.h
+	<stdint.h>
+
+1739034483 source:c:\users\brad\documents\github\hermes\src\hermeshw.c
+	<stdint.h>
+	<stdlib.h>
+	<string.h>
+	<stdio.h>
+	"hermesHW.h"
+
