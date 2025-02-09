@@ -18,6 +18,16 @@ AEAD-secured ports (for UARTs, etc.)
 #define ALLOC_MEM_UINT32S 256
 #endif
 
+void dump(uint8_t *src, uint8_t len) {
+    if (len) {
+        for (uint8_t i = 0; i < len; i++) {
+            if ((i % 30) == 0) printf("\n");
+            printf("%02X ", src[i]);
+        }
+    }
+}
+
+
 static uint32_t context_memory[ALLOC_MEM_UINT32S];
 static int allocated_uint32s;
 
@@ -38,7 +48,7 @@ static void SendByte(port_ctx *ctx, uint8_t c) {
     ctx->hPutcFn((void *)&*ctx->thCtx, c); // add to hash
 }
 
-// Send: Tag[1], Length[4], format[1]
+// Send: Tag[1], Length[2], ~Length[2], format[1]
 static void SendHeader(port_ctx *ctx, int tag, int msglen) {
     ctx->hInitFn((void *)&*ctx->thCtx, ctx->hkey, HERMES_HMAC_LENGTH);
     SendByte(ctx, tag);                 // Header starts with a TAG byte,
@@ -52,14 +62,15 @@ static void SendHeader(port_ctx *ctx, int tag, int msglen) {
 
 // Send: HMAC[]
 static void SendTxHash(port_ctx *ctx){
-    ctx->hFinalFn((void *)&*ctx->thCtx, ctx->pad);
+    uint8_t hash[HERMES_HMAC_LENGTH];
+    ctx->hFinalFn((void *)&*ctx->thCtx, hash);
     for (int i = 0; i < HERMES_HMAC_LENGTH; i++) {
-        SendByte(ctx, ctx->pad[i]);
+        SendByte(ctx, hash[i]);
     }
     ctx->tcFn(HERMES_TAG_END);
 }
 
-// Send: Tag[1], Length[4], format[1], mIV[16], cIV[16], HMAC[]
+// Send: Tag[1], Length[2], ~Length[2], format[1], mIV[], cIV[], HMAC[]
 static int SendIV(port_ctx *ctx, int tag) {
     SendHeader(ctx, tag,
                HERMES_IV_LENGTH * 2 + HERMES_HMAC_LENGTH + 6);
@@ -68,16 +79,14 @@ static int SendIV(port_ctx *ctx, int tag) {
     int r = 0;
     int c;
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
-        c = getc_TRNG();  r |= c;  mIV[i] = c;
+        c = getc_TRNG();  r |= c;  mIV[i] = (uint8_t)c;
         SendByte(ctx, (uint8_t)c);
-        c = getc_TRNG();  r |= c;  cIV[i] = c;
+        c = getc_TRNG();  r |= c;  cIV[i] = (uint8_t)c;
         if (r & 0x100) {
             return HERMES_ERROR_TRNG_FAILURE;
         }
     }
-    //    ctx->hPutcFn((void *)&*ctx->thCtx, c); // add to hash
-
-    ctx->cInitFn((void *)&*ctx->tcCtx, ctx->ckey, mIV);
+    ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->ckey, mIV);
     ctx->cBlockFn((void *)&*ctx->tcCtx, mIV, cIV, 0);
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
         SendByte(ctx, cIV[i]);
@@ -85,6 +94,7 @@ static int SendIV(port_ctx *ctx, int tag) {
     SendTxHash(ctx);
     ctx->hmacIVt = 0;
     ctx->cInitFn((void *)&*ctx->tcCtx, ctx->ckey, cIV);
+    ctx->tReady = 1;
     return 0;
 }
 
@@ -144,10 +154,13 @@ void hermesBoiler(port_ctx *ctx) {
     ctx->tcFn(HERMES_TAG_END);
 }
 
+#define S_END ctx->state = 8
+
 // Receive char or command from input stream
 int hermesPutc(port_ctx *ctx, int c){
     int r = 0;
     int temp, i;
+    uint8_t cIV[HERMES_HMAC_LENGTH];
     if (c & 0xFF00) {
         switch (c) {
         case HERMES_CMD_RESET:
@@ -184,12 +197,12 @@ int hermesPutc(port_ctx *ctx, int c){
         goto next_header_char;
     case 4: // lower ~length
         if (ctx->length != (c ^ 0xFF)) {
-badlength:  ctx->state = 8;
+badlength:  S_END;
         }
         goto next_header_char;
     case 5: // protocol
         if (ctx->protocol != c) {
-            ctx->state = 8;
+            S_END;
         }
 next_header_char:
         ctx->state++;
@@ -225,7 +238,7 @@ next_header_char:
         if ((i == temp)                         // received length
             || (i == HERMES_RXBUF_LENGTH)) {    // or maximum length
             ctx->boilFn(ctx->rxbuf, temp);
-            ctx->state++;                       // wait for END token
+            S_END;
         }
         break;
     case 8: // wait for the end tag
@@ -239,11 +252,29 @@ next_header_char:
         i = ctx->i;
         if ((i == temp)                         // received length
             || (i == HERMES_RXBUF_LENGTH)) {    // or maximum length
-            printf("\nmIV|cIV=%d bytes ", temp);
             temp >>= 1;
-            xc_crypt_init(&*ctx->rcCtx, ctx->ckey, ctx->rxbuf);
-
-            ctx->state = 8;                     // wait for END token
+            if (temp != HERMES_HMAC_LENGTH) {   // should not happen
+                return HERMES_ERROR_BAD_HMAC;
+            }
+            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, ctx->rxbuf);
+            ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[temp], cIV, 1);
+            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, cIV);
+            ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->rxbuf);
+            ctx->i = 0;
+            ctx->state = 10;
+        }
+        break;
+    case 10: // get HMAC
+        if (ctx->rxbuf[ctx->i++] != c) {
+            ctx->state = 0;
+            return HERMES_ERROR_BAD_HMAC;
+        }
+        if (ctx->i == HERMES_HMAC_LENGTH) {     // HMAC matched
+            ctx->rReady = 1;
+            if (ctx->tag == HERMES_TAG_HARD_RESET) {
+                r = SendIV(ctx, HERMES_TAG_SOFT_RESET);
+            }
+            S_END;
         }
         break;
     default:
@@ -263,12 +294,14 @@ port_ctx Bob;
 
 static void AliceCiphertextOutput(uint8_t c) {
     printf("%02X-", c);
-    hermesPutc(&Bob, c);
+    int r = hermesPutc(&Bob, c);
+    if (r) printf("\nAlice saw return code %d ", r);
 }
 
 static void BobCiphertextOutput(uint8_t c) {
     printf("%02X~", c);
-    hermesPutc(&Alice, c);
+    int r = hermesPutc(&Alice, c);
+    if (r) printf("\nAlice saw return code %d ", r);
 }
 
 // Received-plaintest functions
@@ -293,7 +326,7 @@ const uint8_t BobBoiler[16] =         {"hms0Bob"};
 #define MY_PROTOCOL 0
 
 int main() {
-    int tests = -1;
+    int tests = 7;
     hermesNoPorts();
     hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput,
@@ -307,5 +340,6 @@ int main() {
     if (tests & 1) hermesBoiler(&Alice);
     if (tests & 2) hermesBoiler(&Bob);
     if (tests & 4) hermesPair(&Alice);
+    printf("\nAlice=%d%d, Bob=%d%d", Alice.rReady, Alice.tReady, Bob.rReady, Bob.tReady);
     return 0;
 }

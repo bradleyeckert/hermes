@@ -5,10 +5,10 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_BOILER_LENGTH   16      /* boilerplate length */
-#define HERMES_IV_LENGTH        8      /* Bytes in IV       */
-#define HERMES_HMAC_LENGTH      8      /* Bytes in HMAC       */
-#define HERMES_RXBUF_LENGTH    256      /* Buffer length */
+#define HERMES_BOILER_LENGTH    16      /* boilerplate length */
+#define HERMES_IV_LENGTH        16      /* Bytes in IV       */
+#define HERMES_HMAC_LENGTH      16      /* Bytes in HMAC       */
+#define HERMES_RXBUF_LENGTH    256      /* Buffer length    */
 
 // Message tags
 #define HERMES_TAG_END          18      /* signal end of message (don't change) */
@@ -52,7 +52,7 @@ typedef int (*hmac_finalFn)(size_t *ctx, uint8_t *out);
 typedef void (*crypt_initFn)(size_t *ctx, const uint8_t *key, const uint8_t *iv);
 typedef void (*crypt_blockFn)(size_t *ctx, const uint8_t *in, uint8_t *out, int mode);
 
-// about 88+HERMES_RXBUF_LENGTH bytes per port
+// about 80+HERMES_RXBUF_LENGTH bytes per port
 typedef struct
 {   xChaCha_ctx *rcCtx;     // receiver encryption context
 	siphash_ctx *rhCtx;     // receiver HMAC context
@@ -71,7 +71,6 @@ typedef struct
     const uint8_t *boil;    // boilerplate
     const uint8_t *ckey;    // encryption/decryption key
     const uint8_t *hkey;    // HMAC signing key
-    uint8_t pad[16];        // scratchpad
     uint8_t rxbuf[HERMES_RXBUF_LENGTH];
     uint16_t i;
     uint16_t length;        // received message length
@@ -79,6 +78,8 @@ typedef struct
     uint8_t protocol;       // which AEAD protocol is in use
     uint8_t state;          // of the FSM
     uint8_t escaped;        // assembling a 2-byte escape sequence
+    uint8_t rReady;         // receiver is initialized
+    uint8_t tReady;         // transmitter is initialized
 } port_ctx;
 
 /** Input raw ciphertext (or command)
