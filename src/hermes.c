@@ -13,7 +13,7 @@
 // use this to printf how many uint32s you have left over
 #define ALLOC_HEADROOM (ALLOC_MEM_UINT32S - allocated_uint32s)
 #ifndef ALLOC_MEM_UINT32S
-#define ALLOC_MEM_UINT32S 512
+#define ALLOC_MEM_UINT32S 200
 #endif
 
 static uint32_t context_memory[ALLOC_MEM_UINT32S];
@@ -162,27 +162,27 @@ int hermesPutc(port_ctx *ctx, int c){
     case 1: // tag
         ctx->hInitFn((void *)&*ctx->rhCtx, ctx->hkey, HERMES_HMAC_LENGTH);
         ctx->tag = c;
-        goto nextchar;
+        goto next_header_char;
     case 2: // upper length byte
         ctx->length = c << 8;
-        goto nextchar;
+        goto next_header_char;
     case 3: // lower length byte
         ctx->length |= (uint16_t)c;
-        goto nextchar;
+        goto next_header_char;
     case 4: // upper ~length
         if ((ctx->length >> 8) != (c ^ 0xFF)) {goto badlength;}
-        goto nextchar;
+        goto next_header_char;
     case 5: // lower ~length
         if (ctx->length != (c ^ 0xFF)) {
-badlength:  ctx->state = 10;
+badlength:  ctx->state = 9;
         }
-        goto nextchar;
+        goto next_header_char;
     case 6: // protocol
         if (ctx->protocol != c) {
-            ctx->state = 11;
+            ctx->state = 9;
         }
-nextchar: ctx->state++;
-        ctx->hPutcFn((void *)&*ctx->rhCtx, c); // add to hash
+next_header_char: ctx->state++;
+next_char:        ctx->hPutcFn((void *)&*ctx->rhCtx, c); // add to hash
         break;
     case 7: // evaluate tag; c is the first byte of a message or HERMES_TAG_END
 //        printf("\nctx=%p, tag %d, length %d, ", &ctx, ctx->tag, ctx->length);
@@ -211,10 +211,10 @@ nextchar: ctx->state++;
         if ((i == temp)                         // received length
             || (i == HERMES_RXBUF_LENGTH)) {    // or maximum length
             ctx->boilFn(ctx->rxbuf, temp);
-            ctx->state = 10;                    // wait for END token
+            ctx->state = 9;                    // wait for END token
         }
         break;
-    case 10: // wait for the end tag
+    case 9: // wait for the end tag
         if (c == HERMES_TAG_END) {
             ctx->state = 0;
         }
@@ -232,6 +232,8 @@ nextchar: ctx->state++;
 port_ctx Alice;
 port_ctx Bob;
 
+// Connect Alice to Bob via a virtual null-modem cable
+
 static void AliceCiphertextOutput(uint8_t c) {
     printf("%02X-", c);
     hermesPutc(&Bob, c);
@@ -241,6 +243,8 @@ static void BobCiphertextOutput(uint8_t c) {
     printf("%02X~", c);
     hermesPutc(&Alice, c);
 }
+
+// Received-plaintest functions
 
 static void PlaintextHandler(const uint8_t *src, uint32_t length) {
     while (length--) putc(*src++, stdout);
@@ -268,5 +272,8 @@ int main() {
     hermesBoiler(&Alice);
     hermesBoiler(&Bob);
 //    hermesPair(&Alice);
+    int bytes = 4*allocated_uint32s + 2*sizeof(port_ctx);
+    printf("\n%d RAM bytes used for 2 ports (Alice and Bob)", bytes);
+    printf("\nALLOC_MEM_UINT32S may be reduced by %d", ALLOC_HEADROOM);
     return 0;
 }
