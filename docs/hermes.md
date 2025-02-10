@@ -54,7 +54,7 @@ A host PC connected to a target MCU through a UART would keep track of keys for 
 
 The message format consists of a header, a payload, and a digital signature (HMAC). A header always contains the message length and protocol ID. The first byte of the header is a tag byte indicating what kind of message it is. The tag ranges from `18` to `1F`.
 
-The simplest message is a Boilerplate Query, ``18-00-06-FF-F9-00-12``, which means:
+The simplest message is a Boilerplate Query, ``18-06-00-F9-FF-00-12``, which means:
 
 - 18 Tag: Request boilerplate
 - 0006 Length: 16-bit big-endian, spans all tokens up to `12`.
@@ -71,14 +71,14 @@ Headers are 6-byte. Depending on the tag, messages have optional fields like pay
 
 ### Boilerplate messages
 
-Boilerplate messages are plaintext, so they do not get a hash. The Boilerplate Query is ``18-00-06-FF-F9-00-12``, which triggers a Boilerplate Response. The allowed length of a boilerplate is up to 64 bytes, the minimum receive buffer size. Boilerplate responses longer than 64-byte are truncated, so the receiver will wait for a `12`.
+Boilerplate messages are plaintext, so they do not get a hash. The Boilerplate Query is ``18-06-00-F9-FF-00-12``, which triggers a Boilerplate Response. The allowed length of a boilerplate is up to 64 bytes, the minimum receive buffer size. Boilerplate responses longer than 64-byte are truncated, so the receiver will wait for a `12`.
 
 ### IV setup messages
 
 The messages used for pairing are a specific length, which depends on the IV length. A sample Send IV message looks like this:
 
 ```
-1A-00-37-FF-C8-00                                   Header
+1A-37-00-FF-C8-00                                   Header
 29-BE-E1-D6-52-49-F1-E9-B3-DB-87-3E-24-0D-06-47     mIV
 AF-87-4C-B9-0D-30-B6-4C-00-CA-8E-C8-E9-48-B3-10-02  cIV (notice the embedded 12)
 02                                                  receiver buffer size in 64-byte blocks
@@ -86,5 +86,5 @@ DA-51-63-7F-FA-34-EE-AE-EA-C3-AD-E8-7A-BC-E0-55     HMAC
 12                                                  end-of-message
 ```
 
-The pairing request, `12-1A-00-37-FF-C8-00`, triggers the above message. Upon reception of the setup message, the receiver sends a response setup message in the same format but with the tag `1B` instead of `1A`.
+The pairing request, `1A-37-00-C8-FF-00-...`, triggers the above message. Upon reception of the setup message, the receiver sends a response setup message in the same format but with the tag `1B` instead of `1A`.
 

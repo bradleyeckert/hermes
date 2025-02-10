@@ -6,10 +6,10 @@
 #include "siphash/src/siphash.h"
 
 #define HERMES_BOILER_LENGTH       16   /* boilerplate length */
-#define HERMES_IV_LENGTH           16   /* Bytes in IV       */
-#define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC       */
-#define HERMES_RXBUF_LENGTH       128   /* RX buffer length    */
-#define HERMES_TXBUF_LENGTH       128   /* TX buffer length    */
+#define HERMES_IV_LENGTH           16   /* Bytes in IV */
+#define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC */
+#define HERMES_RXBUF_LENGTH       128   /* RX buffer length, a multiple of 16 */
+#define HERMES_TXBUF_LENGTH       128   /* TX buffer length, a multiple of 16 */
 
 // Message tags
 #define HERMES_TAG_END             18   /* signal end of message (don't change) */
@@ -29,6 +29,7 @@
 #define HERMES_ERROR_WRONG_PROTOCOL 7
 #define HERMES_ERROR_INVALID_LENGTH 8
 #define HERMES_ERROR_LONG_BOILERPLT 9
+#define HERMES_ERROR_TXIN_TOO_LONG 10
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
@@ -50,7 +51,7 @@ typedef void (*hermes_ciphrFn)(uint8_t c);   // output raw ciphertext byte
 typedef void (*hermes_plainFn)(const uint8_t *src, uint32_t length);
 typedef int (*hermes_rngFn)  (uint8_t *dest, int length);
 
-typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, int hsize);
+typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, uint32_t counter, int hsize);
 typedef void (*hmac_putcFn)(size_t *ctx, uint8_t c);
 typedef int (*hmac_finalFn)(size_t *ctx, uint8_t *out);
 typedef void (*crypt_initFn)(size_t *ctx, const uint8_t *key, const uint8_t *iv);
@@ -141,7 +142,7 @@ void hermesBoiler(port_ctx *ctx);
  * @param bytes Length of message in bytes
  * @return      0 if okay, otherwise HERMES_ERROR_?
  */
-int hermesSend(port_ctx *ctx, uint8_t *m, int bytes);
+int hermesSend(port_ctx *ctx, const uint8_t *m, uint16_t bytes);
 
 
 #if ((HERMES_RXBUF_LENGTH < 64) || (HERMES_RXBUF_LENGTH > 16320))
