@@ -10,7 +10,6 @@
 Generate a random byte
 */
 int getc_TRNG(void) {
-    return 1; // for testing
 	return rand() & 0xFF;	// DO NOT USE in a real application
 }                           // Use a TRNG instead
 

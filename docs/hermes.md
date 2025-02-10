@@ -49,3 +49,42 @@ The only plaintext sent over the port, besides headers, is boilerplate informati
 A host PC connected to a target MCU through a UART would keep track of keys for different targets. Depending on security requirements, the host PC can keep those keys on the cloud or in a file in encrypted format.
 
 `hermes` should support key rotation. Given the key address, a function in `hermesHW.c` would write the new key. This specialized function is platform-specific since it writes to Flash.
+
+## Message format
+
+The message format consists of a header, a payload, and a digital signature (HMAC). A header always contains the message length and protocol ID. The first byte of the header is a tag byte indicating what kind of message it is. The tag ranges from `18` to `1F`.
+
+The simplest message is a Boilerplate Query, ``18-00-06-FF-F9-00-12``, which means:
+
+- 18 Tag: Request boilerplate
+- 0006 Length: 16-bit big-endian, spans all tokens up to `12`.
+- FFF9 ~Length: Ones complement of Length.
+- 00 Protocol: 0 for XChaCha20-SipHash.
+
+The length field is a byte count, not a token count. Bytes have a range of 0 to 255. Tokens are 8-bit values that get sent over the wire. Bytes are usually one token, but sometimes two. The data stream does not contain any `11`, `12`, or `13` (hex) tokens. Any byte between `10` and `13` is encoded as a 2-byte sequence of `10` followed by a token between `00` and `03`. `11`, `12`, and `13` are reserved for PHY usage. Soft flow control uses `11` for XON and `13` for XOFF, so `hermes` does not use them. All messages end in a `12` end-of-message marker.
+
+`12` tokens should be sent occasionally between packets to clear up synchronization issues caused by communication glitches. The receiver can end up in a "wait for end" state, which an extra `12` will fix. A `12` when the FSM is waiting for a message will be ignored.
+
+The FSM can be reset at any time with a `10-04` sequence, which re-pairs the connection.
+
+Headers are 6-byte. Depending on the tag, messages have optional fields like payload and hash. There two messages that are not encrypted: Boilerplate Query and Boilerplate Response. All others use AEAD - they are encrypted and authenticated.
+
+### Boilerplate messages
+
+Boilerplate messages are plaintext, so they do not get a hash. The Boilerplate Query is ``18-00-06-FF-F9-00-12``, which triggers a Boilerplate Response. The allowed length of a boilerplate is up to 64 bytes, the minimum receive buffer size. Boilerplate responses longer than 64-byte are truncated, so the receiver will wait for a `12`.
+
+### IV setup messages
+
+The messages used for pairing are a specific length, which depends on the IV length. A sample Send IV message looks like this:
+
+```
+1A-00-37-FF-C8-00                                   Header
+29-BE-E1-D6-52-49-F1-E9-B3-DB-87-3E-24-0D-06-47     mIV
+AF-87-4C-B9-0D-30-B6-4C-00-CA-8E-C8-E9-48-B3-10-02  cIV (notice the embedded 12)
+02                                                  receiver buffer size in 64-byte blocks
+DA-51-63-7F-FA-34-EE-AE-EA-C3-AD-E8-7A-BC-E0-55     HMAC
+12                                                  end-of-message
+```
+
+The pairing request, `12-1A-00-37-FF-C8-00`, triggers the above message. Upon reception of the setup message, the receiver sends a response setup message in the same format but with the tag `1B` instead of `1A`.
+

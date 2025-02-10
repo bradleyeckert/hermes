@@ -170,7 +170,7 @@ int hermesPutc(port_ctx *ctx, int c){
     if (c & 0xFF00) {
         switch (c) {
         case HERMES_CMD_RESET:
-            hermesPair(ctx);
+reset:      hermesPair(ctx);
             ctx->state = 0;
             break;
         default:
@@ -180,6 +180,7 @@ int hermesPutc(port_ctx *ctx, int c){
     }
     if (ctx->escaped) {
         ctx->escaped = 0;
+        if (c > 3) goto reset;
         c = (c & 3) + 0x10;                     // 10h 00h -> 10h
     }
     else if (c == 0x10) {
@@ -188,7 +189,8 @@ int hermesPutc(port_ctx *ctx, int c){
     }
     ctx->hPutcFn((void *)&*ctx->rhCtx, c);      // add to hash
     switch (ctx->state) {
-    case 0: // tag
+    case 0: // valid tags are 0x18 to 0x1F
+        if ((c & 0xF8) != 0x18) break;
         ctx->hInitFn((void *)&*ctx->rhCtx, ctx->hkey, HERMES_HMAC_LENGTH);
         ctx->hPutcFn((void *)&*ctx->rhCtx, c);
         ctx->tag = c;
@@ -234,6 +236,10 @@ next_header_char:
         case HERMES_TAG_SOFT_RESET:             // receiving IV
             ctx->rReady = 0;
             ctx->state = 9;
+            temp = ctx->length - (HDRlength + HERMES_HMAC_LENGTH + ADlength);
+            if (temp != (2*HERMES_IV_LENGTH)) {   // should not happen
+                S_END_E(HERMES_ERROR_INVALID_LENGTH);
+            }
             break;
         default: break;
             ctx->state = 0;
@@ -243,9 +249,9 @@ next_header_char:
         ctx->rxbuf[ctx->i++] = c;
         temp = ctx->length - HDRlength;
         i = ctx->i;
-        if ((i == temp)                         // received length
-            || (i == HERMES_RXBUF_LENGTH)) {    // or maximum length
+        if ((i == temp) || (i == 64)) {         // received length
             ctx->boilFn(ctx->rxbuf, temp);
+            if (i == 64) r = HERMES_ERROR_LONG_BOILERPLT;
             S_END
         }
         break;
@@ -256,16 +262,9 @@ next_header_char:
         break;
     case 9: // get remaining mIV, then cIV
         ctx->rxbuf[ctx->i++] = c;
-        temp = ctx->length - (HDRlength + HERMES_HMAC_LENGTH + ADlength);
-        i = ctx->i;
-        if ((i == temp)                         // received length
-            || (i == HERMES_RXBUF_LENGTH)) {    // or maximum length
-            temp >>= 1;
-            if (temp != HERMES_HMAC_LENGTH) {   // should not happen
-                return HERMES_ERROR_BAD_HMAC_LEN;
-            }
+        if (ctx->i == (2*HERMES_IV_LENGTH)) {   // fixed length
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, ctx->rxbuf);
-            ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[temp], cIV, 1);
+            ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[HERMES_IV_LENGTH], cIV, 1);
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, cIV);
             ctx->state = 10;
         }

@@ -10,14 +10,14 @@
 #define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC       */
 #define HERMES_RXBUF_LENGTH       128   /* RX buffer length    */
 #define HERMES_TXBUF_LENGTH       128   /* TX buffer length    */
-                                  
-// Message tags                   
+
+// Message tags
 #define HERMES_TAG_END             18   /* signal end of message (don't change) */
-#define HERMES_TAG_GET_BOILER      20   /* request boilerplate */
-#define HERMES_TAG_BOILERPLATE     21   /* boilerplate */
-#define HERMES_TAG_HARD_RESET      22   /* signal a new 2-way IV init */
-#define HERMES_TAG_SOFT_RESET      23   /* signal a new 1-way IV init */
-#define HERMES_TAG_MESSAGE         24   /* signal an encrypted message */
+#define HERMES_TAG_GET_BOILER      24   /* request boilerplate */
+#define HERMES_TAG_BOILERPLATE     25   /* boilerplate */
+#define HERMES_TAG_HARD_RESET      26   /* signal a new 2-way IV init */
+#define HERMES_TAG_SOFT_RESET      27   /* signal a new 1-way IV init */
+#define HERMES_TAG_MESSAGE         28   /* signal an encrypted message */
 
 // Error tags
 #define HERMES_ERROR_INVALID_STATE  1   /* FSM reached an invalid state */
@@ -28,6 +28,7 @@
 #define HERMES_ERROR_BAD_HMAC_LEN   6
 #define HERMES_ERROR_WRONG_PROTOCOL 7
 #define HERMES_ERROR_INVALID_LENGTH 8
+#define HERMES_ERROR_LONG_BOILERPLT 9
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
