@@ -48,7 +48,7 @@ static void SendByte(port_ctx *ctx, uint8_t c) {
     ctx->hPutcFn((void *)&*ctx->thCtx, c); // add to hash
 }
 
-#define HDRlength 6 /* Header length (tag+len+~len)*/
+#define HDRlength 6 /* Header length (tag+len+~len) */
 #define ADlength  1 /* Associated data length */
 
 // Send: Tag[1], Length[2], ~Length[2], format[1]
@@ -160,8 +160,7 @@ void hermesBoiler(port_ctx *ctx) {
     ctx->tcFn(HERMES_TAG_END);
 }
 
-#define S_END ctx->state = 8;
-#define S_END_E(ior) ctx->state = 8; r = (ior); break;
+#define WAIT_END(ior) ctx->state = 9; r = (ior); break;
 
 // Receive char or command from input stream
 int hermesPutc(port_ctx *ctx, int c){
@@ -206,87 +205,81 @@ reset:      hermesPair(ctx);
         if ((ctx->length >> 8) != (c ^ 0xFF)) {goto badlength;}
         goto next_header_char;
     case 4: // lower ~length
-        if (ctx->length != (c ^ 0xFF)) {
-badlength:  S_END_E(HERMES_ERROR_INVALID_LENGTH)
+        if ((ctx->length != (c ^ 0xFF)) ||
+            (ctx->length > HERMES_RXBUF_LENGTH)) {
+badlength:  WAIT_END(HERMES_ERROR_INVALID_LENGTH)
         }
         goto next_header_char;
     case 5: // protocol
         if (ctx->protocol != c) {
-            S_END_E(HERMES_ERROR_WRONG_PROTOCOL)
+            WAIT_END(HERMES_ERROR_WRONG_PROTOCOL)
         }
 next_header_char:
         ctx->state++;
         break;
-    case 6: // evaluate tag; c is the first byte of a message or HERMES_TAG_END
-//        printf("\nctx=%p, tag %d, length %d, ", &ctx, ctx->tag, ctx->length);
+    case 6: // message data begins here
         ctx->rxbuf[0] = c;
         ctx->i = 1;
-        switch (ctx->tag) {
-        case HERMES_TAG_GET_BOILER: // received a request for boilerplate
+        ctx->state++;
+        if (ctx->tag == HERMES_TAG_GET_BOILER) { // received a request for boilerplate
             SendHeader(ctx, HERMES_TAG_BOILERPLATE, HERMES_BOILER_LENGTH);
-            for (int i=0; i < HERMES_BOILER_LENGTH; i++) {
+            for (i=0; i < HERMES_BOILER_LENGTH; i++) {
                 ctx->tcFn(ctx->boil[i]);
             }
             ctx->tcFn(HERMES_TAG_END);
             ctx->state = 0;
-            break;
-        case HERMES_TAG_BOILERPLATE:            // receiving boilerplate
-            ctx->state++;
-            break;
-        case HERMES_TAG_HARD_RESET:
-        case HERMES_TAG_SOFT_RESET:             // receiving IV
-            ctx->rReady = 0;
-            ctx->state = 9;
-            temp = ctx->length - (HDRlength + HERMES_HMAC_LENGTH + ADlength);
-            if (temp != (2*HERMES_IV_LENGTH)) {   // should not happen
-                S_END_E(HERMES_ERROR_INVALID_LENGTH);
-            }
-            break;
-        default: break;
-            ctx->state = 0;
         }
         break;
-    case 7: // get remaining boilerplate
+    case 7: // get payload
         ctx->rxbuf[ctx->i++] = c;
         temp = ctx->length - HDRlength;
         i = ctx->i;
-        if ((i == temp) || (i == 64)) {         // received length
-            ctx->boilFn(ctx->rxbuf, temp);
-            if (i == 64) r = HERMES_ERROR_LONG_BOILERPLT;
-            S_END
+        if (i == (temp - HERMES_HMAC_LENGTH)) {
+            ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
+        }
+        if ((i == temp) || (i == HERMES_RXBUF_LENGTH)) {
+            if (ctx->tag == HERMES_TAG_BOILERPLATE) {
+                if (i > 63) {
+                    r = HERMES_ERROR_LONG_BOILERPLT;
+                    temp = 64;
+                }
+                ctx->boilFn(ctx->rxbuf, temp);
+                ctx->state = 0;
+            } else {
+                ctx->state++;
+            }
         }
         break;
-    case 8: // wait for the end tag
-        if (c == HERMES_TAG_END) {
-            ctx->state = 0;
+    case 8: // test HMAC, then process the payload
+        temp = ctx->length - (HDRlength + HERMES_HMAC_LENGTH);
+        for (i = 0; i < HERMES_HMAC_LENGTH; i++) {
+            if (ctx->hmac[i] != ctx->rxbuf[i+temp]) {
+                ctx->state = 0;
+                return HERMES_ERROR_BAD_HMAC;
+            }
         }
-        break;
-    case 9: // get remaining mIV, then cIV
-        ctx->rxbuf[ctx->i++] = c;
-        if (ctx->i == (2*HERMES_IV_LENGTH)) {   // fixed length
+// The payload has been authenticated, temp is the data length
+        switch (ctx->tag) {
+        case HERMES_TAG_HARD_RESET:
+        case HERMES_TAG_SOFT_RESET:
+            if (temp != (2 * HERMES_IV_LENGTH + ADlength)) {
+                return HERMES_ERROR_INVALID_LENGTH;
+            }
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, ctx->rxbuf);
             ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[HERMES_IV_LENGTH], cIV, 1);
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, cIV);
-            ctx->state = 10;
-        }
-        break;
-    case 10: // get maximum message length
-        ctx->avail = (uint8_t)c;
-        ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->rxbuf);
-        ctx->i = 0;
-        ctx->state++;
-        break;
-    case 11: // get HMAC
-        if (ctx->rxbuf[ctx->i++] != c) {
-            ctx->state = 0;
-            return HERMES_ERROR_BAD_HMAC;
-        }
-        if (ctx->i == HERMES_HMAC_LENGTH) {     // HMAC matched
+            ctx->avail = ctx->rxbuf[2*HERMES_IV_LENGTH];
             ctx->rReady = 1;
             if (ctx->tag == HERMES_TAG_HARD_RESET) {
                 r = SendIV(ctx, HERMES_TAG_SOFT_RESET);
             }
-            S_END
+        default: break;
+        }
+        ctx->state = 0;
+        break;
+    case 9: // wait for the end tag
+        if (c == HERMES_TAG_END) {
+            ctx->state = 0;
         }
         break;
     default:

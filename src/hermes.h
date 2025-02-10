@@ -74,6 +74,7 @@ typedef struct
     const uint8_t *boil;    // boilerplate
     const uint8_t *ckey;    // encryption/decryption key
     const uint8_t *hkey;    // HMAC signing key
+    uint8_t hmac[HERMES_HMAC_LENGTH];
     uint8_t rxbuf[HERMES_RXBUF_LENGTH];
     uint8_t txbuf[HERMES_TXBUF_LENGTH];
     uint16_t i;
