@@ -54,7 +54,7 @@ static void SendByte(port_ctx *ctx, uint8_t c) {
 
 // Send: Tag[1], Length[2], ~Length[2], format[1]
 static void SendHeader(port_ctx *ctx, int tag, int msglen) {
-    ctx->hInitFn((void *)&*ctx->thCtx, ctx->hkey, ctx->hmacIVt, HERMES_HMAC_LENGTH);
+    ctx->hInitFn((void *)&*ctx->thCtx, ctx->hkey, HERMES_HMAC_LENGTH);
     SendByte(ctx, tag);                 // Header starts with a TAG byte,
     msglen += HDRlength;                // length includes the header
     for (int i = 2; i > 0; --i) {       // a 16-bit big-endian length
@@ -78,7 +78,6 @@ static void SendTxHash(port_ctx *ctx){
 // Send: Tag[1], Length[2], ~Length[2], format[1], mIV[], cIV[],
 // RXbufsize[1], HMAC[]
 static int SendIV(port_ctx *ctx, int tag) {
-    ctx->hmacIVt = 0;
     SendHeader(ctx, tag,
                HERMES_IV_LENGTH * 2 + HERMES_HMAC_LENGTH + ADlength);
     uint8_t mIV[HERMES_IV_LENGTH];
@@ -215,7 +214,7 @@ reset:      hermesPair(ctx);
     switch (ctx->state) {
     case 0: // valid tags are 0x18 to 0x1F
         if ((c & 0xF8) != 0x18) break;
-        ctx->hInitFn((void *)&*ctx->rhCtx, ctx->hkey, ctx->hmacIVr, HERMES_HMAC_LENGTH);
+        ctx->hInitFn((void *)&*ctx->rhCtx, ctx->hkey, HERMES_HMAC_LENGTH);
         ctx->hPutcFn((void *)&*ctx->rhCtx, c);
         ctx->tag = c;
         goto next_header_char;
@@ -294,7 +293,6 @@ next_header_char:
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, cIV);
             ctx->avail = ctx->rxbuf[2*HERMES_IV_LENGTH];
             ctx->rReady = 1;
-            ctx->hmacIVr = 0;
             if (ctx->tag == HERMES_TAG_HARD_RESET) {
                 r = SendIV(ctx, HERMES_TAG_SOFT_RESET);
             }
@@ -401,7 +399,3 @@ int main() {
     printf("\nAvailability: Alice=%d, Bob=%d", hermesAvail(&Alice), hermesAvail(&Bob));
     return 0;
 }
-
-// The hash IV should be bumped after each block.
-// This is a problem when the packet is being received under a random hashIV since
-// pairing needs a known hashIV.

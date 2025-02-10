@@ -51,7 +51,7 @@ typedef void (*hermes_ciphrFn)(uint8_t c);   // output raw ciphertext byte
 typedef void (*hermes_plainFn)(const uint8_t *src, uint32_t length);
 typedef int (*hermes_rngFn)  (uint8_t *dest, int length);
 
-typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, uint32_t counter, int hsize);
+typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, int hsize);
 typedef void (*hmac_putcFn)(size_t *ctx, uint8_t c);
 typedef int (*hmac_finalFn)(size_t *ctx, uint8_t *out);
 typedef void (*crypt_initFn)(size_t *ctx, const uint8_t *key, const uint8_t *iv);
@@ -62,8 +62,6 @@ typedef struct
 	siphash_ctx *rhCtx;     // receiver HMAC context
     xChaCha_ctx *tcCtx;     // transmitter encryption context
 	siphash_ctx *thCtx;	    // transmitter HMAC context
-    uint32_t hmacIVr;       // receiver HMAC IV
-    uint32_t hmacIVt;       // transmitter HMAC IV
     hermes_plainFn boilFn;  // boilerplate handler (from hermesPutc)
     hermes_plainFn tmFn;    // plaintext handler (from hermesPutc)
     hermes_ciphrFn tcFn;    // ciphertext transmit function

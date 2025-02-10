@@ -40,8 +40,6 @@ The IV is sent encrypted using a one-time-use random IV, which is in plaintext, 
 
 After the pairing handshake is finished, `hermesAvail(&Alice)` returns 0 if synchronization has been lost due to data corruption. The connection will have to be re-paired with `hermesPair(&Alice)`.
 
-A session can encrypt up to 2^32 messages before it is forced to re-pair. 
-
 ## Key management
 
 The only plaintext sent over the port, besides headers, is boilerplate information that should be used to supply a UUID. A key vault would use the UUID to look up the key. `hermesBoiler(&Alice)` triggers a boilerplate response from Bob. The response is sent to a handler function that will use it to look up the keys.
