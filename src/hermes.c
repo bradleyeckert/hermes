@@ -48,10 +48,14 @@ static void SendByte(port_ctx *ctx, uint8_t c) {
     ctx->hPutcFn((void *)&*ctx->thCtx, c); // add to hash
 }
 
+#define HDRlength 6 /* Header length (tag+len+~len)*/
+#define ADlength  1 /* Associated data length */
+
 // Send: Tag[1], Length[2], ~Length[2], format[1]
 static void SendHeader(port_ctx *ctx, int tag, int msglen) {
     ctx->hInitFn((void *)&*ctx->thCtx, ctx->hkey, HERMES_HMAC_LENGTH);
     SendByte(ctx, tag);                 // Header starts with a TAG byte,
+    msglen += HDRlength;                // length includes the header
     for (int i = 2; i > 0; --i) {       // a 16-bit big-endian length
         SendByte(ctx, (uint8_t)(msglen >> 8)); // send twice to detect
         SendByte(ctx, (uint8_t)(msglen));      // bad length early
@@ -70,14 +74,11 @@ static void SendTxHash(port_ctx *ctx){
     ctx->tcFn(HERMES_TAG_END);
 }
 
-#define HDRlength 6 /* Header length (tag+len+~len)*/
-#define ADlength  1 /* Associated data length */
-
 // Send: Tag[1], Length[2], ~Length[2], format[1], mIV[], cIV[],
 // RXbufsize[1], HMAC[]
 static int SendIV(port_ctx *ctx, int tag) {
     SendHeader(ctx, tag,
-               HERMES_IV_LENGTH * 2 + HERMES_HMAC_LENGTH + HDRlength + ADlength);
+               HERMES_IV_LENGTH * 2 + HERMES_HMAC_LENGTH + ADlength);
     uint8_t mIV[HERMES_IV_LENGTH];
     uint8_t cIV[HERMES_IV_LENGTH];
     int r = 0;
@@ -140,7 +141,7 @@ void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol,
 
 // Encrypt and send a message
 int hermesSend(port_ctx *ctx, uint8_t *m, int bytes){
-    SendHeader(ctx, HERMES_TAG_MESSAGE, bytes+6);
+    SendHeader(ctx, HERMES_TAG_MESSAGE, bytes+HDRlength);
     while (bytes--) SendByte(ctx, *m++);
     SendTxHash(ctx);
     ctx->hmacIVt += 1;
@@ -155,7 +156,7 @@ int hermesPair(port_ctx *ctx) {
 
 // Send a boilerplate request
 void hermesBoiler(port_ctx *ctx) {
-    SendHeader(ctx, HERMES_TAG_GET_BOILER, 6);
+    SendHeader(ctx, HERMES_TAG_GET_BOILER, 0);
     ctx->tcFn(HERMES_TAG_END);
 }
 
@@ -222,7 +223,7 @@ next_header_char:
         ctx->i = 1;
         switch (ctx->tag) {
         case HERMES_TAG_GET_BOILER: // received a request for boilerplate
-            SendHeader(ctx, HERMES_TAG_BOILERPLATE, 6+HERMES_BOILER_LENGTH);
+            SendHeader(ctx, HERMES_TAG_BOILERPLATE, HERMES_BOILER_LENGTH);
             for (int i=0; i < HERMES_BOILER_LENGTH; i++) {
                 ctx->tcFn(ctx->boil[i]);
             }
