@@ -5,19 +5,21 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_BOILER_LENGTH       16   /* boilerplate length */
-#define HERMES_IV_LENGTH           16   /* Bytes in IV */
-#define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC */
+#define HERMES_LENGTH_LENGTH        2   /* Bytes in message length, 2 to 4 */
+#define HERMES_IV_LENGTH           16   /* Bytes in IV, should be 16 */
+#define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC, may be 8 or 16 */
 #define HERMES_RXBUF_LENGTH       128   /* RX buffer length, a multiple of 16 */
 #define HERMES_TXBUF_LENGTH       128   /* TX buffer length, a multiple of 16 */
 
-// Message tags
+// Message tags (mostly 24 to 31)
 #define HERMES_TAG_END             18   /* signal end of message (don't change) */
 #define HERMES_TAG_GET_BOILER      24   /* request boilerplate */
 #define HERMES_TAG_BOILERPLATE     25   /* boilerplate */
-#define HERMES_TAG_HARD_RESET      26   /* signal a new 2-way IV init */
-#define HERMES_TAG_SOFT_RESET      27   /* signal a new 1-way IV init */
-#define HERMES_TAG_MESSAGE         28   /* signal an encrypted message */
+#define HERMES_TAG_HARD_RESET      27   /* signal a 2-way IV init */
+#define HERMES_TAG_SOFT_RESET      28   /* signal a 1-way IV init */
+#define HERMES_TAG_MESSAGE         29   /* signal an encrypted message */
+#define HERMES_TAG_ACK             30   /* signal an encrypted message */
+//#define HERMES_TAG_NACK            31   /* signal an encrypted message */
 
 // Error tags
 #define HERMES_ERROR_INVALID_STATE  1   /* FSM reached an invalid state */
@@ -26,10 +28,9 @@
 #define HERMES_ERROR_MISSING_KEY    4
 #define HERMES_ERROR_BAD_HMAC       5
 #define HERMES_ERROR_BAD_HMAC_LEN   6
-#define HERMES_ERROR_WRONG_PROTOCOL 7
-#define HERMES_ERROR_INVALID_LENGTH 8
-#define HERMES_ERROR_LONG_BOILERPLT 9
-#define HERMES_ERROR_TXIN_TOO_LONG 10
+#define HERMES_ERROR_INVALID_LENGTH 7
+#define HERMES_ERROR_LONG_BOILERPLT 8
+#define HERMES_ERROR_TXIN_TOO_LONG  9
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
@@ -76,16 +77,17 @@ typedef struct
     uint8_t hmac[HERMES_HMAC_LENGTH];
     uint8_t rxbuf[HERMES_RXBUF_LENGTH];
     uint8_t txbuf[HERMES_TXBUF_LENGTH];
+    uint32_t length;        // received message length
     uint16_t i;
-    uint16_t length;        // received message length
     uint8_t tag;            // received message type
-    uint8_t protocol;       // which AEAD protocol is in use
     uint8_t state;          // of the FSM
     uint8_t escaped;        // assembling a 2-byte escape sequence
     // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
     uint8_t avail;          // max size of message you can send = avail*64 bytes
+    uint8_t rAck;           // receiver Ack
+    uint8_t tAck;           // transmitter Ack
 } port_ctx;
 
 
@@ -140,7 +142,7 @@ void hermesBoiler(port_ctx *ctx);
  * @param bytes Length of message in bytes
  * @return      0 if okay, otherwise HERMES_ERROR_?
  */
-int hermesSend(port_ctx *ctx, const uint8_t *m, uint16_t bytes);
+int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes);
 
 
 #if ((HERMES_RXBUF_LENGTH < 64) || (HERMES_RXBUF_LENGTH > 16320))
