@@ -6,6 +6,10 @@ Cybersecurity for embedded systems has been getting a lot of scrutiny due to suc
 
 Manufacturers already operate a closed ecosystem for their products. `hermes` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. There is no need for highly complex encryption schemes that have more ways to go wrong.
 
+In particular, the PKE used in SSL/TLS requires a X.509 certificate. An embedded system without Internet access would need a root certificate. A private root certificate can be considered similar to a master key because it acts as the foundational trust element within a private certificate authority (CA), essentially "signing" and validating all other certificates issued within that system, making it the key component for establishing trust within that closed network, just like a master key unlocks multiple doors in a building; its security is crucial as compromising it could compromise the entire trust structure within that private network. The discovery of the root certificate in one device would compromise all devices.
+
+Without PKE, there is no spoofing. Key management relies on key escrow instead. Anti-spoofing relies on he security of the escrow.
+
 ## AEAD
 
 [Wikipedia](https://en.wikipedia.org/wiki/Authenticated_encryption):
@@ -27,6 +31,8 @@ Cryptographic functions are called through function pointers held in the port's 
 * C99
 * Little-endian byte order
 * Hardware-specific functions in `*HW.c` file(s)
+
+Most of the byte-order dependency comes from using `memcpy` to move data and from byte arrays. It could be replaced with a `MEMCPY` macro that substitutes a byte-reversing version of `memcpy` for big-endian targets.
 
 ## Hardware requirements
 

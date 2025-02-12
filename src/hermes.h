@@ -20,7 +20,7 @@
 #define HERMES_TAG_RESPONSE        28   /* signal a 1-way IV init */
 #define HERMES_TAG_MESSAGE         29   /* signal an encrypted message */
 #define HERMES_TAG_ACK             30   /* signal an encrypted message */
-//#define HERMES_TAG_NACK            31   /* signal an encrypted message */
+#define HERMES_TAG_NACK            31   /* signal an encrypted message */
 
 // Error tags
 #define HERMES_ERROR_INVALID_STATE  1   /* FSM reached an invalid state */
@@ -85,12 +85,13 @@ typedef struct
     uint8_t tag;            // received message type
     uint8_t state;          // of the FSM
     uint8_t escaped;        // assembling a 2-byte escape sequence
+    uint8_t retries;        // count the NACKs
+    uint8_t rAck;           // receiver Ack
+    uint8_t tAck;           // transmitter Ack
     // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
     uint8_t avail;          // max size of message you can send = avail*64 bytes
-    uint8_t rAck;           // receiver Ack
-    uint8_t tAck;           // transmitter Ack
 } port_ctx;
 
 
