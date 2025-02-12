@@ -53,7 +53,7 @@ typedef void (*hermes_ciphrFn)(uint8_t c);   // output raw ciphertext byte
 typedef void (*hermes_plainFn)(const uint8_t *src, uint32_t length);
 typedef int (*hermes_rngFn)  (uint8_t *dest, int length);
 
-typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, int hsize);
+typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, int hsize, uint64_t ctr);
 typedef void (*hmac_putcFn)(size_t *ctx, uint8_t c);
 typedef int (*hmac_finalFn)(size_t *ctx, uint8_t *out);
 typedef void (*crypt_initFn)(size_t *ctx, const uint8_t *key, const uint8_t *iv);
@@ -72,8 +72,8 @@ typedef struct
     hmac_finalFn hFinalFn;  // HMAC finalization function
     crypt_initFn cInitFn;   // Encryption initialization function
     crypt_blockFn cBlockFn; // Encryption block function
-    uint32_t hctrRx;        // HMAC counters
-    uint32_t hctrTx;
+    uint64_t hctrRx;        // HMAC counters
+    uint64_t hctrTx;
     const uint8_t *boil;    // boilerplate
     const uint8_t *ckey;    // encryption/decryption key
     const uint8_t *hkey;    // HMAC signing key
