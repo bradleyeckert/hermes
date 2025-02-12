@@ -28,6 +28,15 @@ void dump(const uint8_t *src, uint8_t len) {
     }
 }
 
+#define PRINTF  if (0) printf
+//#define PRINTF  if (1) printf
+
+/*
+#define DEBUG 1
+#define PRINTF(fmt, ...) \
+        do { if (DEBUG) fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, \
+                                __LINE__, __func__, __VA_ARGS__); } while (0)
+*/
 
 static uint32_t context_memory[ALLOC_MEM_UINT32S];
 static int allocated_uint32s;
@@ -78,6 +87,8 @@ static void SendTxHash(port_ctx *ctx){
 // Send: Tag[1], Length[2], ~Length[2], format[1], mIV[], cIV[],
 // RXbufsize[1], HMAC[]
 static int SendIV(port_ctx *ctx, int tag) {
+    PRINTF("\nSending IV, tag=%d, port=%p; ", tag, (void*)ctx);
+    ctx->hctrTx = 0;
     SendHeader(ctx, tag,
                HERMES_IV_LENGTH * 2 + HERMES_HMAC_LENGTH + ivADlength);
     uint8_t mIV[HERMES_IV_LENGTH];
@@ -111,6 +122,7 @@ static int SendTxBuf (port_ctx *ctx, uint16_t bytes, uint8_t tag) {
     for (i = 0; i < bytes; i += 16) {           // encrypt in blocks
         ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->txbuf[i], &ctx->txbuf[i], 0);
     }
+    ctx->hctrTx++;
     bytes = (bytes + 16) & ~0x0F;
     SendHeader(ctx, tag, bytes + HERMES_HMAC_LENGTH);
     for (i = 0; i < bytes; i++) {               // send whole blocks
@@ -118,11 +130,6 @@ static int SendTxBuf (port_ctx *ctx, uint16_t bytes, uint8_t tag) {
     }
     SendTxHash(ctx);
     return 0;
-}
-// Calling this hangs
-static int sendAck(port_ctx *ctx) {
-    ctx->txbuf[0] = ctx->tAck + 1;
-    return SendTxBuf(ctx, 1, HERMES_TAG_ACK);
 }
 
 // -----------------------------------------------------------------------------
@@ -159,13 +166,15 @@ void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol,
     }
 }
 
-// Send a pairing request
-int hermesPair(port_ctx *ctx) {
-    return SendIV(ctx, HERMES_TAG_HARD_RESET);
+void hermesPair(port_ctx *ctx) {
+    PRINTF("\nSending Pairing request, port=%p; ", (void*)ctx);
+    SendHeader(ctx, HERMES_TAG_RESET, 0);
+    ctx->tcFn(HERMES_TAG_END);
+    ctx->hctrTx = 0;
 }
 
-// Send a boilerplate request
 void hermesBoiler(port_ctx *ctx) {
+    PRINTF("\nSending Boilerplate request, port=%p; ", (void*)ctx);
     SendHeader(ctx, HERMES_TAG_GET_BOILER, 0);
     ctx->tcFn(HERMES_TAG_END);
 }
@@ -177,6 +186,7 @@ void hermesBoiler(port_ctx *ctx) {
 int hermesAvail(port_ctx *ctx){
     if (!ctx->rReady) return 0;
     if (!ctx->tReady) return 0;
+    if (ctx->tAck == ctx->rAck) return 0;
     int rxAvail = ctx->avail << 6;
     if (rxAvail > MAX_TX_LENGTH) rxAvail = MAX_TX_LENGTH;
     return rxAvail;
@@ -185,6 +195,8 @@ int hermesAvail(port_ctx *ctx){
 // Encrypt and send a message
 int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
     if (bytes > hermesAvail(ctx)) return HERMES_ERROR_TXIN_TOO_LONG;
+    PRINTF("\nSending MESSAGE, port=%p, tAck=%d, rAck=%d; ", (void*)ctx, ctx->tAck, ctx->rAck);
+    ctx->tAck = ctx->rAck;                      // tag as unacknowledged
     memcpy(ctx->txbuf, &bytes, 2);              // save the length
     ctx->txbuf[2] = ctx->tAck;                  // and the message counter
     memcpy(&ctx->txbuf[PREAMBLE_SIZE], m, bytes); // and the input
@@ -252,20 +264,24 @@ next_header_char:
     case 5: // lower ~length
         if ((ctx->length & 0xFF) == (c ^ 0xFF)) goto next_header_char;
         ctx->state = 9;
-        r = HERMES_ERROR_INVALID_LENGTH;
-        break;
+        return HERMES_ERROR_INVALID_LENGTH;
     case 6: // message data begins here
         ctx->rxbuf[0] = c;
         ctx->i = 1;
         ctx->state++;
-        if (ctx->tag == HERMES_TAG_GET_BOILER) { // received a request for boilerplate
-            uint8_t len = ctx->boil[0];
-            SendHeader(ctx, HERMES_TAG_BOILERPLATE, len);
-            for (i=1; i <= len; i++) {
+        switch (ctx->tag) {
+        case HERMES_TAG_GET_BOILER:
+            temp = ctx->boil[0];
+            SendHeader(ctx, HERMES_TAG_BOILERPLATE, temp);
+            for (i=1; i <= temp; i++) {
                 ctx->tcFn(ctx->boil[i]);
             }
             ctx->tcFn(HERMES_TAG_END);
             ctx->state = 0;
+            break;
+        case HERMES_TAG_RESET:
+            ctx->state = 0;
+            return SendIV(ctx, HERMES_TAG_CHALLENGE);
         }
         break;
     case 7: // get payload
@@ -298,8 +314,8 @@ next_header_char:
         }
 // The payload has been authenticated, temp is the data length
         switch (ctx->tag) {
-        case HERMES_TAG_HARD_RESET:
-        case HERMES_TAG_SOFT_RESET:
+        case HERMES_TAG_CHALLENGE:
+        case HERMES_TAG_RESPONSE:
             if (temp != (2 * HERMES_IV_LENGTH + ivADlength)) {
                 return HERMES_ERROR_INVALID_LENGTH;
             }
@@ -308,22 +324,31 @@ next_header_char:
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, cIV);
             ctx->avail = ctx->rxbuf[2*HERMES_IV_LENGTH];
             ctx->rReady = 1;
-            ctx->rAck = 0;
-            if (ctx->tag == HERMES_TAG_HARD_RESET) {
-                r = SendIV(ctx, HERMES_TAG_SOFT_RESET);
+            ctx->rAck = 1;
+            ctx->hctrRx = 0;
+            PRINTF("\nReceived IV, tag=%d, port=%p; ", ctx->tag, (void*)ctx);
+            if (ctx->tag == HERMES_TAG_CHALLENGE) {
+                r = SendIV(ctx, HERMES_TAG_RESPONSE);
             }
             break;
         case HERMES_TAG_MESSAGE:
+            PRINTF("\nReceiving MESSAGE, port=%p; ", (void*)ctx);
             for (i = 0; i < temp; i += 16) {
                 ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[i], &ctx->rxbuf[i], 1);
             }
+            ctx->hctrRx++;
             memcpy (&temp, ctx->rxbuf, 2); // little-endian length
+            ctx->rAck = ctx->rxbuf[2];
             ctx->tmFn(&ctx->rxbuf[PREAMBLE_SIZE], temp);
-//            sendAck(ctx);
+            ctx->txbuf[0] = ctx->rAck + 1;
+            r = SendTxBuf(ctx, 1, HERMES_TAG_ACK);
             break;
         case HERMES_TAG_ACK:
-printf("\nACK received, temp=%d, ack=%d", temp, ctx->rxbuf[0]);
+            ctx->cBlockFn((void *)&*ctx->rcCtx, ctx->rxbuf, ctx->rxbuf, 1);
+            ctx->hctrRx++;
+            PRINTF("\nSending ACK=%d, port=%p; ", ctx->rxbuf[0], (void*)ctx);
             ctx->rAck = ctx->rxbuf[0];
+            break;
         default: break;
         }
         ctx->state = 0;
@@ -405,17 +430,20 @@ int main() {
     int bytes = 4*allocated_uint32s + 2*sizeof(port_ctx);
     printf("%d RAM bytes used for 2 ports (Alice and Bob)\n", bytes);
     printf("ALLOC_MEM_UINT32S may be reduced by %d\n", ALLOC_HEADROOM);
+    printf("Ports: Alice=%p, Bob=%p, %x\n", &Alice, &Bob, sizeof(Alice));
     if (tests & 0x01) hermesBoiler(&Alice);
     if (tests & 0x02) hermesBoiler(&Bob);
     if (tests & 0x04) hermesPair(&Alice);
+    printf("\nAvailability: Alice=%d, Bob=%d", hermesAvail(&Alice), hermesAvail(&Bob));
     if (tests & 0x08) {
+        hermesSend(&Alice, (uint8_t*)"*", 1);
+        hermesSend(&Alice, (uint8_t*)"*", 0);
         hermesSend(&Alice, (uint8_t*)"Alice says Hello", 16);
-        hermesSend(&Alice, (uint8_t*)"So what's your root password?", 29);
+        hermesSend(&Alice, (uint8_t*)"So, what's your root password?", 30);
     } //                              0123456789abcdef0123456789abcdef
     if (tests & 0x10) {
         hermesSend(&Bob,   (uint8_t*)"Bob says World", 14);
         hermesSend(&Bob,   (uint8_t*)"Wouldn't you like to know?", 26);
     }
-    printf("\nAvailability: Alice=%d, Bob=%d", hermesAvail(&Alice), hermesAvail(&Bob));
     return 0;
 }

@@ -15,8 +15,9 @@
 #define HERMES_TAG_END             18   /* signal end of message (don't change) */
 #define HERMES_TAG_GET_BOILER      24   /* request boilerplate */
 #define HERMES_TAG_BOILERPLATE     25   /* boilerplate */
-#define HERMES_TAG_HARD_RESET      27   /* signal a 2-way IV init */
-#define HERMES_TAG_SOFT_RESET      28   /* signal a 1-way IV init */
+#define HERMES_TAG_RESET           26   /* trigger a 2-way IV init */
+#define HERMES_TAG_CHALLENGE       27   /* signal a 2-way IV init */
+#define HERMES_TAG_RESPONSE        28   /* signal a 1-way IV init */
 #define HERMES_TAG_MESSAGE         29   /* signal an encrypted message */
 #define HERMES_TAG_ACK             30   /* signal an encrypted message */
 //#define HERMES_TAG_NACK            31   /* signal an encrypted message */
@@ -71,6 +72,8 @@ typedef struct
     hmac_finalFn hFinalFn;  // HMAC finalization function
     crypt_initFn cInitFn;   // Encryption initialization function
     crypt_blockFn cBlockFn; // Encryption block function
+    uint32_t hctrRx;        // HMAC counters
+    uint32_t hctrTx;
     const uint8_t *boil;    // boilerplate
     const uint8_t *ckey;    // encryption/decryption key
     const uint8_t *hkey;    // HMAC signing key
@@ -123,9 +126,8 @@ int hermesPutc(port_ctx *ctx, int c);
 
 /** Trigger pairing. Resets the encrypted connection.
  * @param ctx Port identifier
- * @return    0 if okay, otherwise HERMES_ERROR_?
  */
-int hermesPair(port_ctx *ctx);
+void hermesPair(port_ctx *ctx);
 
 
 /** Trigger boilerplate.
