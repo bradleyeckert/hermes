@@ -119,3 +119,9 @@ The pairing request, `1A-35-00-CA-...`, triggers the above message. Upon recepti
 ## Acknowledge handshake
 
 Each encrypted message elicits an ACK response. The ACK counters of each port stay synchronized when everything is operating normally.
+
+## Error recovery
+
+Errors in the header usually throw the keystreams out of sync. The only recovery is a re-pair sequence, which occurs after the data stops streaming (a `12` is seen).
+
+Errors in the message (or HMAC) cause a HMAC failure, but don't affect keystream sync. In that case, the original message is sent re-encrypted using new keystream segment, which rules out replay attacks.

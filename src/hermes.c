@@ -65,7 +65,7 @@ static void SendByte(port_ctx *ctx, uint8_t c) {
 
 // Send: Tag[1], Length[2], ~Length[2], format[1]
 static void SendHeader(port_ctx *ctx, int tag, uint32_t msglen) {
-//    DUMP((uint8_t*)&ctx->hctrTx, 8); printf("Begin HMAC hctrTx, port %p, ", (void*)ctx);
+    DUMP((uint8_t*)&ctx->hctrTx, 8); printf("Begin HMAC hctrTx, port %p, ", (void*)ctx);
     ctx->hInitFn((void *)&*ctx->thCtx, ctx->hkey, HERMES_HMAC_LENGTH, ctx->hctrTx);
     SendByte(ctx, tag);                         // Header consists of a TAG byte,
     msglen += HDRlength;
@@ -140,7 +140,8 @@ static int ResendMessage (port_ctx *ctx) {
     uint16_t bytes;
     memcpy(&bytes, ctx->txbuf, 2);
     bytes += PREAMBLE_SIZE;             // include preamble in the message
-    PRINTF("\nSendTxBuf %d bytes... ", bytes);
+    PRINTF("\nSending MESSAGE[%d/%d], port=%p, tAck=%d, rAck=%d; ",
+        bytes, ((bytes + 15) & ~0x0F), (void*)ctx, ctx->tAck, ctx->rAck);
     bytes = (bytes + 15) & ~0x0F;       // send whole blocks
     SendHeader(ctx, HERMES_TAG_MESSAGE, bytes + HERMES_HMAC_LENGTH);
     for (int i = 0; i < bytes; i += 16) {   // encrypt in blocks
@@ -217,7 +218,6 @@ int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
         len = hermesAvail(ctx);
         PRINTF("\nTruncating message to %d bytes, ", len);
     }
-    PRINTF("\nSending MESSAGE, port=%p, tAck=%d, rAck=%d; ", (void*)ctx, ctx->tAck, ctx->rAck);
     ctx->tAck = ctx->rAck;              // tag as unacknowledged
     memcpy(ctx->txbuf, &len, 2);        // save the length
     ctx->txbuf[2] = ctx->tAck;          // and the message counter
@@ -256,7 +256,7 @@ reset:      hermesPair(ctx);
     case 0: // valid tags are 0x18 to 0x1F
         if ((c & 0xF8) != 0x18) break;
         if (c == HERMES_TAG_CHALLENGE) ctx->hctrRx = 0;
-//        DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Begin HMAC hctrRx, port %p, ", (void*)ctx);
+        DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Begin HMAC hctrRx, port %p, ", (void*)ctx);
         ctx->hInitFn((void *)&*ctx->rhCtx, ctx->hkey, HERMES_HMAC_LENGTH, ctx->hctrRx);
         ctx->hPutcFn((void *)&*ctx->rhCtx, c);
         ctx->tag = c;
@@ -338,10 +338,18 @@ next_header_char:
             if (ctx->hmac[i] != ctx->rxbuf[i+temp]) {
                 ctx->state = 0;
                 r = HERMES_ERROR_BAD_HMAC;
+                if (ctx->tag == HERMES_TAG_MESSAGE) {
+                    PRINTf("\n>>> Sending NACK, port=%p; ", (void*)ctx);
+                    SendACK(ctx, HERMES_TAG_NACK, ctx->rAck);
+                    ctx->retries++;
+                    // to do: If too many retries, re-pair
+                    // make challenge an exported function
+                }
                 goto endcase;
             }
         }
-// The payload has been authenticated, temp is the data length
+        PRINTF("\nAuthenticated packet of length %d, tag %d received on port=%p; ",
+               temp, ctx->tag, (void*)ctx);
         switch (ctx->tag) {
         case HERMES_TAG_CHALLENGE:
         case HERMES_TAG_RESPONSE:
@@ -356,18 +364,22 @@ next_header_char:
             ctx->avail = ctx->rxbuf[2*HERMES_IV_LENGTH];
             ctx->rReady = 1;
             ctx->rAck = 1;
-            PRINTF("\nReceived IV, tag=%d, port=%p; ", ctx->tag, (void*)ctx);
+            PRINTF("\nReceived IV, tag=%d; ", ctx->tag);
             DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Received HMAC hctrRx, ");
             if (ctx->tag == HERMES_TAG_CHALLENGE) {
                 r = SendIV(ctx, HERMES_TAG_RESPONSE);
             }
             break;
         case HERMES_TAG_MESSAGE:
-            PRINTF("\nReceiving MESSAGE, port=%p; ", (void*)ctx);
+            PRINTF("\nDecrypting MESSAGE; ");
             for (i = 0; i < temp; i += 16) {
                 ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[i], &ctx->rxbuf[i], 1);
             }
             memcpy (&temp, ctx->rxbuf, 2); // little-endian length
+            if (temp > 110) {
+                printf("\nMessage length = %d, QUIT", temp);
+                exit(-1);
+            }
             ctx->rAck = ctx->rxbuf[2];
             ctx->tmFn(&ctx->rxbuf[PREAMBLE_SIZE], temp);
             SendACK(ctx, HERMES_TAG_ACK, ctx->rAck + 1);
@@ -375,13 +387,14 @@ next_header_char:
             break;
         case HERMES_TAG_ACK:
             ctx->cBlockFn((void *)&*ctx->rcCtx, ctx->rxbuf, ctx->rxbuf, 1);
-            PRINTF("\nReceived ACK=%d, port=%p; ", ctx->rxbuf[0], (void*)ctx);
+            PRINTF("\nReceived ACK=%d; ", ctx->rxbuf[0]);
             ctx->rAck = ctx->rxbuf[0];
             ctx->hctrRx++;
             ctx->retries = 0;
             break;
         case HERMES_TAG_NACK:
-            PRINTf("\n<<< Received NACK, port=%p; ", (void*)ctx);
+            ctx->cBlockFn((void *)&*ctx->rcCtx, ctx->rxbuf, ctx->rxbuf, 1);
+            PRINTf("\n<<< Received NACK=%d; ", ctx->rxbuf[0]);
             ResendMessage(ctx);
             break;
         default: break;
@@ -391,6 +404,7 @@ next_header_char:
     case 9: // wait for the end tag
         if (c == HERMES_TAG_END) {
             ctx->state = 0;
+            hermesPair(ctx);
         }
         break;
     default:
@@ -398,12 +412,6 @@ next_header_char:
         r = HERMES_ERROR_INVALID_STATE;
     }
 endcase:
-    if ((r) && (ctx->tag == HERMES_TAG_MESSAGE)) {
-        SendACK(ctx, HERMES_TAG_NACK, ctx->rAck);
-        ctx->retries++;
-        // to do: If too many retries, re-pair
-        // make challenge an exported function
-    }
     return r;
 }
 
@@ -415,7 +423,7 @@ port_ctx Bob;
 int snoopy;
 
 // Inverse of the probability of a bit error
-#define CONNECTION_QUALITY 0
+#define CONNECTION_QUALITY 1000
 
 // Connect Alice to Bob via a virtual null-modem cable
 
@@ -532,7 +540,7 @@ int SendBob(int msgID) {
 
 int main() {
     int tests = 0x1F;   // enable these tests...
-//    snoopy = 1;         // don't display the wire traffic
+    snoopy = 1;         // don't display the wire traffic
     hermesNoPorts();
     hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput,
@@ -563,7 +571,7 @@ int main() {
         do {j = SendAlice(i++);} while (i != j);
     }
     if (tests & 0x10) {
-        printf("\n\nBob ================================");
+        printf("\n\nBob ==================================");
         i = 0;
         do {j = SendBob(i++);} while (i != j);
     }
