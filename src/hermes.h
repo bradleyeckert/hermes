@@ -60,7 +60,8 @@ typedef void (*crypt_initFn)(size_t *ctx, const uint8_t *key, const uint8_t *iv)
 typedef void (*crypt_blockFn)(size_t *ctx, const uint8_t *in, uint8_t *out, int mode);
 
 typedef struct
-{   xChaCha_ctx *rcCtx;     // receiver encryption context
+{   char* name;             // port name (for debugging)
+    xChaCha_ctx *rcCtx;     // receiver encryption context
 	siphash_ctx *rhCtx;     // receiver HMAC context
     xChaCha_ctx *tcCtx;     // transmitter encryption context
 	siphash_ctx *thCtx;	    // transmitter HMAC context
@@ -112,7 +113,7 @@ void hermesNoPorts(void);
  * @param enc_key     32-byte encryption key
  * @param hmac_key    32-byte HMAC key
  */
-void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol,
+void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *enc_key, const uint8_t *hmac_key);
 
@@ -144,8 +145,20 @@ void hermesBoiler(port_ctx *ctx);
  * @param m     Plaintext message to send
  * @param bytes Length of message in bytes
  * @return      0 if okay, otherwise HERMES_ERROR_?
+ * Only send data if hermesAvail is not 0.
  */
 int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes);
+
+
+/** Get number of bytes allowed in a message
+ * @param ctx   Port identifier
+ * @return      Capacity
+ */
+uint32_t hermesAvail(port_ctx *ctx);
+
+
+int hermesRAMused (int ports);
+int hermesRAMunused (void);
 
 
 #if ((HERMES_RXBUF_LENGTH < 64) || (HERMES_RXBUF_LENGTH > 16320))

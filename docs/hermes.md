@@ -122,6 +122,20 @@ Each encrypted message elicits an ACK response. The ACK counters of each port st
 
 ## Error recovery
 
-Errors in the header usually throw the keystreams out of sync. The only recovery is a re-pair sequence, which occurs after the data stops streaming (a `12` is seen).
+Errors in the header usually throw the keystreams out of sync. The only recovery is a re-pair sequence, which occurs after the data stops streaming (a `12` is seen). Payload errors may beve other options.
 
-Errors in the message (or HMAC) cause a HMAC failure, but don't affect keystream sync. In that case, the original message is sent re-encrypted using new keystream segment, which rules out replay attacks.
+If the streaming medium is UDP, the most common error is completely dropped packets. The sender doesn't know whether or not ACK has been sent, so to avoid this mess use TCP.
+
+### Error in MESSAGE
+
+Errors in the message (or HMAC) cause a HMAC failure, but don't affect keystream sync. In that case, the original message is may be  re-encrypted using new keystream segment, which rules out replay attacks.
+
+### Error in ACK
+
+If the ACK has a HMAC failure, it should re-sync. If it is missing, the application must time out, re-pair, reset the Ack counter in the `txbuf`, and `ResendMessage`.
+
+### Error in pairing
+
+If `hermesAvail` does not return non-zero a reasonable time after `hermesPair`, the pairing handshake did not complete due to a communication error. The calling app should try again.
+
+
