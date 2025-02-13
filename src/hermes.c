@@ -17,10 +17,10 @@ AEAD-secured ports (for UARTs, etc.)
 #define ALLOC_MEM_UINT32S 256
 #endif
 
-#define TRACE 1
+#define TRACE 2
 
 void DUMP(const uint8_t *src, uint8_t len) {
-    if (TRACE) {
+    if (TRACE > 1) {
         for (uint8_t i = 0; i < len; i++) {
             if ((i % 33) == 0) printf("\n___");
             printf("%02X ", src[i]);
@@ -29,12 +29,12 @@ void DUMP(const uint8_t *src, uint8_t len) {
     }
 }
 
-#define PRINTF  if (TRACE) printf
-//#define PRINTF  if (1) printf
+#define PRINTF  if (TRACE > 1) printf
+#define PRINTf  if (TRACE) printf
 
 /*
 #define ERRORF(fmt, ...) \
-        do { if (TRACE) fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, \
+        do { if (TRACE>1) fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, \
                                 __LINE__, __func__, __VA_ARGS__); } while (0)
 */
 
@@ -65,7 +65,7 @@ static void SendByte(port_ctx *ctx, uint8_t c) {
 
 // Send: Tag[1], Length[2], ~Length[2], format[1]
 static void SendHeader(port_ctx *ctx, int tag, uint32_t msglen) {
-    DUMP((uint8_t*)&ctx->hctrTx, 8); printf("Begin HMAC hctrTx, port %p, ", (void*)ctx);
+//    DUMP((uint8_t*)&ctx->hctrTx, 8); printf("Begin HMAC hctrTx, port %p, ", (void*)ctx);
     ctx->hInitFn((void *)&*ctx->thCtx, ctx->hkey, HERMES_HMAC_LENGTH, ctx->hctrTx);
     SendByte(ctx, tag);                         // Header consists of a TAG byte,
     msglen += HDRlength;
@@ -106,7 +106,7 @@ static int SendIV(port_ctx *ctx, int tag) {
         }
     }
     memcpy(&ctx->hctrTx, cIV, 8);
-    DUMP((uint8_t*)&ctx->hctrTx, 8); printf("New HMAC hctrTx, ");
+    DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("New HMAC hctrTx, ");
     ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->ckey, mIV);
     ctx->cBlockFn((void *)&*ctx->tcCtx, cIV, mIV, 0);
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
@@ -136,17 +136,17 @@ static int SendACK (port_ctx *ctx, int tag, uint8_t c) {
 
 // Encrypt and send a message
 static int ResendMessage (port_ctx *ctx) {
+    uint8_t m[16];
     uint16_t bytes;
     memcpy(&bytes, ctx->txbuf, 2);
-    bytes += PREAMBLE_SIZE;
+    bytes += PREAMBLE_SIZE;             // include preamble in the message
     PRINTF("\nSendTxBuf %d bytes... ", bytes);
-    int i;
-    for (i = 0; i < bytes; i += 16) {   // encrypt in blocks
-        ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->txbuf[i], &ctx->txbuf[i], 0);
-    }
-    bytes = (bytes + 16) & ~0x0F;       // send whole blocks
+    bytes = (bytes + 15) & ~0x0F;       // send whole blocks
     SendHeader(ctx, HERMES_TAG_MESSAGE, bytes + HERMES_HMAC_LENGTH);
-    for (i = 0; i < bytes; i++) SendByte(ctx, ctx->txbuf[i]);
+    for (int i = 0; i < bytes; i += 16) {   // encrypt in blocks
+        ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->txbuf[i], m, 0);
+        for (int j = 0; j < 16; j++) SendByte(ctx, m[j]);
+    }
     SendTxHash(ctx);
     return 0;
 }
@@ -199,24 +199,30 @@ void hermesBoiler(port_ctx *ctx) {
 }
 
 // Size of message available to accept
-int hermesAvail(port_ctx *ctx){
+uint32_t hermesAvail(port_ctx *ctx){
     if (!ctx->rReady) return 0;
     if (!ctx->tReady) return 0;
     if (ctx->tAck == ctx->rAck) return 0;
-    int rxAvail = ctx->avail << 6;
-    if (rxAvail > MAX_TX_LENGTH) rxAvail = MAX_TX_LENGTH;
+    uint32_t rxAvail = (ctx->avail << 6) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE);
+    if      (rxAvail > MAX_TX_LENGTH) rxAvail = MAX_TX_LENGTH;
     return rxAvail;
 }
 
 // Encrypt and send a message
 int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
-    if (bytes > hermesAvail(ctx)) return HERMES_ERROR_TXIN_TOO_LONG;
+    int r = 0;
+    uint32_t len = bytes;
+    if (len > hermesAvail(ctx)) {
+        r = HERMES_ERROR_MSG_TRUNCATED;
+        len = hermesAvail(ctx);
+        PRINTF("\nTruncating message to %d bytes, ", len);
+    }
     PRINTF("\nSending MESSAGE, port=%p, tAck=%d, rAck=%d; ", (void*)ctx, ctx->tAck, ctx->rAck);
     ctx->tAck = ctx->rAck;              // tag as unacknowledged
-    memcpy(ctx->txbuf, &bytes, 2);      // save the length
+    memcpy(ctx->txbuf, &len, 2);        // save the length
     ctx->txbuf[2] = ctx->tAck;          // and the message counter
-    memcpy(&ctx->txbuf[PREAMBLE_SIZE], m, bytes); // and the input
-    return ResendMessage(ctx);
+    memcpy(&ctx->txbuf[PREAMBLE_SIZE], m, len); // and the input
+    return ResendMessage(ctx) | r;
 }
 
 // -----------------------------------------------------------------------------
@@ -250,7 +256,7 @@ reset:      hermesPair(ctx);
     case 0: // valid tags are 0x18 to 0x1F
         if ((c & 0xF8) != 0x18) break;
         if (c == HERMES_TAG_CHALLENGE) ctx->hctrRx = 0;
-        DUMP((uint8_t*)&ctx->hctrRx, 8); printf("Begin HMAC hctrRx, port %p, ", (void*)ctx);
+//        DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Begin HMAC hctrRx, port %p, ", (void*)ctx);
         ctx->hInitFn((void *)&*ctx->rhCtx, ctx->hkey, HERMES_HMAC_LENGTH, ctx->hctrRx);
         ctx->hPutcFn((void *)&*ctx->rhCtx, c);
         ctx->tag = c;
@@ -351,7 +357,7 @@ next_header_char:
             ctx->rReady = 1;
             ctx->rAck = 1;
             PRINTF("\nReceived IV, tag=%d, port=%p; ", ctx->tag, (void*)ctx);
-            DUMP((uint8_t*)&ctx->hctrRx, 8); printf("Received HMAC hctrRx, ");
+            DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Received HMAC hctrRx, ");
             if (ctx->tag == HERMES_TAG_CHALLENGE) {
                 r = SendIV(ctx, HERMES_TAG_RESPONSE);
             }
@@ -375,6 +381,7 @@ next_header_char:
             ctx->retries = 0;
             break;
         case HERMES_TAG_NACK:
+            PRINTf("\n<<< Received NACK, port=%p; ", (void*)ctx);
             ResendMessage(ctx);
             break;
         default: break;
@@ -407,23 +414,36 @@ port_ctx Alice;
 port_ctx Bob;
 int snoopy;
 
+// Inverse of the probability of a bit error
+#define CONNECTION_QUALITY 0
+
 // Connect Alice to Bob via a virtual null-modem cable
 
-static void snoop(uint8_t c, char t) {
-    if (!snoopy) return;
+static uint8_t snoop(uint8_t c, char t) {
+    if (CONNECTION_QUALITY) {
+        uint32_t rnd = getc_TRNG() + (getc_TRNG()<<8)
+               + (getc_TRNG()<<16) + (getc_TRNG()<<24);
+        if ((rnd % (CONNECTION_QUALITY + 1)) == 0){
+            PRINTF("\nBit error inserted ");
+            uint8_t b = getc_TRNG() & 7;
+            c ^= 1 << b;
+        }
+    }
+    if (!snoopy) return c;
     printf("%02X", c);
     if (c == 0x12) printf("\n");
     else           printf("%c", t);
+    return c;
 }
 
 static void AliceCiphertextOutput(uint8_t c) {
-    snoop(c, '-');
+    c = snoop(c, '-');
     int r = hermesPutc(&Bob, c);
     if (r) printf("\n*** Bob saw return code %d ", r);
 }
 
 static void BobCiphertextOutput(uint8_t c) {
-    snoop(c, '~');
+    c = snoop(c, '~');
     int r = hermesPutc(&Alice, c);
     if (r) printf("\n*** Alice saw return code %d ", r);
 }
@@ -452,6 +472,64 @@ const uint8_t BobBoiler[] =     {"\x12nyb<Bob's_UUID__>0"};
 
 #define MY_PROTOCOL 0
 
+//int errors = 0;
+//uint8_t text[MAX_TX_LENGTH];                    // random text for testing
+//  for (int i = 0; i < MAX_TX_LENGTH; i++) text[i] = getc_TRNG();
+
+const uint8_t AliceMessages[][128] = {
+" 1. Alice had got so much into the way of expecting nothing but out-of-the-way things to happen,",
+" 2. that it seemed quite dull and stupid for life to go on in the common way.",
+" 3. I almost wish I hadn't gone down that rabbit-hole-and yet-and yet-it's rather curious,",
+" 4. you know, this sort of life!",
+" 5. Sometimes, I've believed as many as six impossible things before breakfast.",
+" 6. Well, I never heard it before, but it sounds uncommon nonsense.",
+" 7. A dream is not reality but who's to say which is which?",
+" 8. How puzzling all these changes are! I'm never sure what I'm going to be,",
+" 9. from one minute to another.",
+"10. We're all mad here.",
+"11. If you drink much from a bottle marked 'poison' it is certain to disagree with you sooner or later.",
+"12. 'If you knew Time as well as I do,' said the Hatter, 'you wouldn't talk about wasting it.'",
+"13. It would be so nice if something made sense for a change."
+};
+
+const uint8_t BobMessages[][128] = {
+" 1. Bob: Now, Bart, any last requests?",
+" 2. Bart: Well, there was one, but... Naah, forget it.",
+" 3. Bob: No, go on.",
+" 4. Bart: It's just that you have such a beautiful voice...",
+" 5. Bob: Guilty as charged.",
+" 6. Bart: Uh huh. Anyway, I was wondering if you could sing the entire score of the \"H.M.S. Pinafore\".",
+" 7. Bob: Very well, Bart. I shall send you to Heaven before I send you to hell. And a 1 and a 2 and",
+" 8. [singing]",
+" 9. Bob: \"We sail the ocean blue, and our saucy ship's a beauty. We are sober men and true, and attentive to our duty...",
+"10. [later]",
+"11. Bob: \"I'm called Little Buttercup, poor Little Buttercup, though I could never tell why...\"",
+"12. [later]",
+"13. Bob: ...\"What never?\" \"No never.\" \"What never?\" \"Hardly ever!\"",
+"14. [with Bart]",
+"15. Bob, Bart: \"he's hardly ever sick at sea...\"",
+"16. [later]",
+"17. Bob: \"... For he himself has said it, and it's clearly to his credit, that he is an Englishman.",
+"         He remai-hains ah-han Eh-heh-heh-heh-heh-hengLISHman!"};
+
+int SendAlice(int msgID) {
+    int elements = sizeof(AliceMessages) / sizeof(AliceMessages[0]);
+    if (msgID >= elements) msgID = elements - 1;
+    const uint8_t* s = AliceMessages[msgID];
+    int ior = hermesSend(&Alice, s, strlen((char*)s));
+    if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
+    return elements;
+}
+
+int SendBob(int msgID) {
+    int elements = sizeof(BobMessages) / sizeof(BobMessages[0]);
+    if (msgID >= elements) msgID = elements - 1;
+    const uint8_t* s = BobMessages[msgID];
+    int ior = hermesSend(&Bob, s, strlen((char*)s));
+    if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
+    return elements;
+}
+
 int main() {
     int tests = 0x1F;   // enable these tests...
 //    snoopy = 1;         // don't display the wire traffic
@@ -465,7 +543,7 @@ int main() {
     int bytes = 4*allocated_uint32s + 2*sizeof(port_ctx);
     printf("%d RAM bytes used for 2 ports (Alice and Bob)\n", bytes);
     printf("ALLOC_MEM_UINT32S may be reduced by %d\n", ALLOC_HEADROOM);
-    printf("Ports: Alice=%p, Bob=%p\n", &Alice, &Bob);
+    PRINTF("Ports: Alice=%p, Bob=%p\n", &Alice, &Bob);
     Alice.hctrTx = 1234; // ensure that re-pair resets these
     Alice.hctrRx = 4321;
     if (tests & 0x01) hermesBoiler(&Alice);
@@ -476,15 +554,18 @@ int main() {
     DUMP((uint8_t*)&Alice.hctrRx, 8); PRINTF("Alice.hctrRx");
     DUMP((uint8_t*)&Bob.hctrTx, 8); PRINTF("Bob.hctrTx");
     DUMP((uint8_t*)&Bob.hctrRx, 8); PRINTF("Bob.hctrRx\n");
+    int i, j;
     if (tests & 0x08) {
+        printf("\n\nAlice ================================");
         hermesSend(&Alice, (uint8_t*)"*", 1);
         hermesSend(&Alice, (uint8_t*)"*", 0);
-        hermesSend(&Alice, (uint8_t*)"Alice says Hello", 16);
-        hermesSend(&Alice, (uint8_t*)"So, what's your root password?", 30);
-    } //                              0123456789abcdef0123456789abcdef
+        i = 0;
+        do {j = SendAlice(i++);} while (i != j);
+    }
     if (tests & 0x10) {
-        hermesSend(&Bob,   (uint8_t*)"Bob says World", 14);
-        hermesSend(&Bob,   (uint8_t*)"Wouldn't you like to know?", 26);
+        printf("\n\nBob ================================");
+        i = 0;
+        do {j = SendBob(i++);} while (i != j);
     }
     return 0;
 }

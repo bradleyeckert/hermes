@@ -31,7 +31,7 @@
 #define HERMES_ERROR_BAD_HMAC_LEN   6
 #define HERMES_ERROR_INVALID_LENGTH 7
 #define HERMES_ERROR_LONG_BOILERPLT 8
-#define HERMES_ERROR_TXIN_TOO_LONG  9
+#define HERMES_ERROR_MSG_TRUNCATED  9
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
