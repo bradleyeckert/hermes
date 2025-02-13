@@ -128,7 +128,7 @@ If the streaming medium is UDP, the most common error is completely dropped pack
 
 ### Error in MESSAGE
 
-Errors in the message (or HMAC) cause a HMAC failure, but don't affect keystream sync. In that case, the original message is may be  re-encrypted using new keystream segment, which rules out replay attacks.
+Errors in the message (or HMAC) cause a HMAC failure, but don't affect keystream sync. In that case, the original message is may be  re-encrypted using new keystream segment, which rules out replay attacks. `hermesSend` returns 0.
 
 ### Error in ACK
 

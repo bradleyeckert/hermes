@@ -16,10 +16,11 @@ int snoopy;
 
 // Connect Alice to Bob via a virtual null-modem cable
 
-int errorpos = 720;    // inject error here
+#define ERROR_PACING 720
+int errorpos = 0;    // inject error here
 
 static uint8_t snoop(uint8_t c, char t) {
-    if (!errorpos--) {
+    if (!(++errorpos % ERROR_PACING)) {
         c++;
         printf("\n<><><><><><> Error injected <><><><><><> ");
     }
@@ -72,19 +73,16 @@ const uint8_t BobBoiler[] =     {"\x12nyb<Bob's_UUID__>0"};
 const uint8_t AliceMessages[][128] = {
 " 1. Alice had got so much into the way of expecting nothing but out-of-the-way things to happen,",
 " 2. that it seemed quite dull and stupid for life to go on in the common way.",
-" 3. I almost wish I hadn't gone down that rabbit-hole-and yet-and yet-it's rather curious,",
-/*
-" 4. you know, this sort of life!",
-" 5. Sometimes, I've believed as many as six impossible things before breakfast.",
-" 6. Well, I never heard it before, but it sounds uncommon nonsense.",
-" 7. A dream is not reality but who's to say which is which?",
-" 8. How puzzling all these changes are! I'm never sure what I'm going to be,",
-" 9. from one minute to another.",
-"10. We're all mad here.",
-"11. If you drink much from a bottle marked 'poison' it is certain to disagree with you sooner or later.",
-"12. 'If you knew Time as well @as I do,' said the Hatter, 'you wouldn't talk about wasting it.'",
-"13. It would be so nice if something made sense for a change."
-*/
+" 3. I almost wish I hadn't gone down that rabbit-hole-and yet-and yet-it's rather curious, you know, this sort of life!",
+" 4. Sometimes, I've believed as many as six impossible things before breakfast.",
+" 5. Well, I never heard it before, but it sounds uncommon nonsense.",
+" 6. A dream is not reality but who's to say which is which?",
+" 7. How puzzling all these changes are! I'm never sure what I'm going to be,",
+" 8. from one minute to another.",
+" 9. We're all mad here.",
+"10. If you drink much from a bottle marked 'poison' it is certain to disagree with you sooner or later.",
+"11. 'If you knew Time as well @as I do,' said the Hatter, 'you wouldn't talk about wasting it.'",
+"12. It would be so nice if something made sense for a change."
 };
 
 const uint8_t BobMessages[][128] = {
@@ -111,6 +109,7 @@ int SendAlice(int msgID) {
     int elements = sizeof(AliceMessages) / sizeof(AliceMessages[0]);
     if (msgID >= elements) msgID = elements - 1;
     const uint8_t* s = AliceMessages[msgID];
+    if (!hermesAvail(&Alice)) hermesPair(&Alice);
     int ior = hermesSend(&Alice, s, strlen((char*)s));
     if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
     return elements;
@@ -120,14 +119,15 @@ int SendBob(int msgID) {
     int elements = sizeof(BobMessages) / sizeof(BobMessages[0]);
     if (msgID >= elements) msgID = elements - 1;
     const uint8_t* s = BobMessages[msgID];
+    if (!hermesAvail(&Bob)) hermesPair(&Bob);
     int ior = hermesSend(&Bob, s, strlen((char*)s));
     if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
     return elements;
 }
 
 int main() {
-    int tests = 0x0F;   // enable these tests...
-    snoopy = 1;         // display the wire traffic
+    int tests = 0x1F;   // enable these tests...
+//    snoopy = 1;         // display the wire traffic
     hermesNoPorts();
     hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE",
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput,
@@ -156,8 +156,6 @@ int main() {
         i = 0;
         do {j = SendBob(i++);} while (i != j);
     }
-//    if (errorpos < 0)
-        return errorpos;
     return 0;
 }
 

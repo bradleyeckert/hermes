@@ -17,7 +17,7 @@ AEAD-secured ports (for UARTs, etc.)
 #define ALLOC_MEM_UINT32S 256
 #endif
 
-#define TRACE 2
+#define TRACE 0
 
 void DUMP(const uint8_t *src, uint8_t len) {
     if (TRACE > 1) {
@@ -137,6 +137,7 @@ static int SendACK (port_ctx *ctx, int tag, uint8_t c) {
 static int ResendMessage (port_ctx *ctx) {
     uint8_t m[16];
     uint16_t bytes;
+    ctx->retries = 0;
     memcpy(&bytes, ctx->txbuf, 2);
     bytes += PREAMBLE_SIZE;             // include preamble in the message
     PRINTF("\n%s sending MESSAGE[%d/%d], tAck=%d, rAck=%d; ",
@@ -389,12 +390,11 @@ next_header_char:
             if (badHMAC) {
                 PRINTf("\n%s is sending NACK, ", ctx->name);
                 ctx->retries++;
-                if (ctx->retries >= 5) {
-                    exit(99);
+                if (ctx->retries > 3) {
+                    ResendMessage(ctx);
                 }
                 SendACK(ctx, HERMES_TAG_NACK, ctx->rAck);
-                // to do: If too many retries, re-pair
-                // make challenge an exported function
+                r = 0; // override "bad HMAC", sender gets a second chance
             } else {
                 memcpy (&temp, ctx->rxbuf, 2); // little-endian length
                 ctx->rAck = ctx->rxbuf[2];
@@ -410,7 +410,7 @@ next_header_char:
             PRINTF("\nReceived ACK=%d; ", ctx->rxbuf[0]);
             ctx->rAck = ctx->rxbuf[0];
             ctx->hctrRx++;
-//            ctx->retries = 0;
+            ctx->retries = 0;
             break;
         case HERMES_TAG_NACK:
             PRINTF("\nDecrypting MESSAGE, block counter = %d; ", ctx->rcCtx->blox);
