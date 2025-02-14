@@ -159,6 +159,7 @@ uint32_t hermesAvail(port_ctx *ctx);
 
 int hermesRAMused (int ports);
 int hermesRAMunused (void);
+int hermesNewfile(port_ctx *ctx);
 
 
 #if ((HERMES_RXBUF_LENGTH < 64) || (HERMES_RXBUF_LENGTH > 16320))

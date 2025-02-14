@@ -11,13 +11,12 @@ port_ctx Alice;
 port_ctx Bob;
 int snoopy;
 
-// Inverse of the probability of a bit error
-#define CONNECTION_QUALITY 0
+#define MY_PROTOCOL 0
 
 // Connect Alice to Bob via a virtual null-modem cable
 
 #define ERROR_PACING 720
-int errorpos = 0;    // inject error here
+int errorpos = 0;    // inject error every ERROR_PACING byte
 
 static uint8_t snoop(uint8_t c, char t) {
     if (!(++errorpos % ERROR_PACING)) {
@@ -31,16 +30,31 @@ static uint8_t snoop(uint8_t c, char t) {
     return c;
 }
 
+static char* errorCode(int e) {
+    switch(e) {
+    case HERMES_ERROR_INVALID_STATE:   return "Invalid state (should never happen)";
+    case HERMES_ERROR_UNKNOWN_CMD:     return "Unknown Command";
+    case HERMES_ERROR_TRNG_FAILURE:    return "TRNG failure - need to re-initialize";
+    case HERMES_ERROR_MISSING_KEY:     return "Missing key - maybe has NULL value";
+    case HERMES_ERROR_BAD_HMAC:        return "Invalid HMAC";
+    case HERMES_ERROR_BAD_HMAC_LEN:    return "Invalid HMAC length";
+    case HERMES_ERROR_INVALID_LENGTH:  return "Invalid packet length";
+    case HERMES_ERROR_LONG_BOILERPLT:  return "Boilerplate is too long";
+    case HERMES_ERROR_MSG_TRUNCATED:   return "Message was truncated";
+    default: return "unknown";
+    }
+}
+
 static void AliceCiphertextOutput(uint8_t c) {
     c = snoop(c, '-');
     int r = hermesPutc(&Bob, c);
-    if (r) printf("\n*** Bob saw return code %d ", r);
+    if (r) printf("\n*** Bob returned %d: %s", r, errorCode(r));
 }
 
 static void BobCiphertextOutput(uint8_t c) {
     c = snoop(c, '~');
     int r = hermesPutc(&Alice, c);
-    if (r) printf("\n*** Alice saw return code %d ", r);
+    if (r) printf("\n*** Alice returned %d: %s", r, errorCode(r));
 }
 
 // Received-plaintest functions
@@ -64,11 +78,6 @@ uint8_t my_signature_key[16] =  {"Or this key..."};
 const uint8_t AliceBoiler[] =   {"\x12nyb<Alice's_UUID>0"};
 const uint8_t BobBoiler[] =     {"\x12nyb<Bob's_UUID__>0"};
 
-#define MY_PROTOCOL 0
-
-//int errors = 0;
-//uint8_t text[MAX_TX_LENGTH];                    // random text for testing
-//  for (int i = 0; i < MAX_TX_LENGTH; i++) text[i] = getc_TRNG();
 
 const uint8_t AliceMessages[][128] = {
 " 1. Alice had got so much into the way of expecting nothing but out-of-the-way things to happen,",
@@ -81,7 +90,7 @@ const uint8_t AliceMessages[][128] = {
 " 8. from one minute to another.",
 " 9. We're all mad here.",
 "10. If you drink much from a bottle marked 'poison' it is certain to disagree with you sooner or later.",
-"11. 'If you knew Time as well @as I do,' said the Hatter, 'you wouldn't talk about wasting it.'",
+"11. 'If you knew Time as well as I do,' said the Hatter, 'you wouldn't talk about wasting it.'",
 "12. It would be so nice if something made sense for a change."
 };
 
@@ -102,14 +111,16 @@ const uint8_t BobMessages[][128] = {
 "14. [with Bart]",
 "15. Bob, Bart: \"he's hardly ever sick at sea...\"",
 "16. [later]",
-"17. Bob: \"... For he himself has said it, and it's clearly to his credit, that he is an Englishman.",
-"         He remai-hains ah-han Eh-heh-heh-heh-heh-hengLISHman!"};
+"17. Bob: \"... For he himself has said it, and it's clearly to his credit, that he is an Englishman.\"",
+"18.      \"He remai-hains ah-han Eh-heh-heh-heh-heh-hengLISHman!\""};
 
 int SendAlice(int msgID) {
     int elements = sizeof(AliceMessages) / sizeof(AliceMessages[0]);
     if (msgID >= elements) msgID = elements - 1;
     const uint8_t* s = AliceMessages[msgID];
-    if (!hermesAvail(&Alice)) hermesPair(&Alice);
+    if (!hermesAvail(&Alice)) {
+        hermesPair(&Alice);
+    }
     int ior = hermesSend(&Alice, s, strlen((char*)s));
     if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
     return elements;
@@ -119,14 +130,27 @@ int SendBob(int msgID) {
     int elements = sizeof(BobMessages) / sizeof(BobMessages[0]);
     if (msgID >= elements) msgID = elements - 1;
     const uint8_t* s = BobMessages[msgID];
-    if (!hermesAvail(&Bob)) hermesPair(&Bob);
+    if (!hermesAvail(&Bob)) {
+        printf("\nRe-authenticating the connection");
+        hermesPair(&Bob);
+    }
     int ior = hermesSend(&Bob, s, strlen((char*)s));
     if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
     return elements;
 }
 
+// File encryption
+
+FILE *file;
+int tally;
+
+void CharToFile(uint8_t c) {
+    fputc(c, file);
+    tally++;
+}
+
 int main() {
-    int tests = 0x1F;   // enable these tests...
+    int tests = 0x3F;   // enable these tests...
 //    snoopy = 1;         // display the wire traffic
     hermesNoPorts();
     hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE",
@@ -135,27 +159,64 @@ int main() {
     hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB",
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput,
                   my_encryption_key, my_signature_key);
-    printf("%d RAM bytes are used for 2 ports (Alice and Bob)\n", hermesRAMused(2));
+    printf("Context RAM usage: %d bytes per port\n", hermesRAMused(2)/2);
     printf("context_memory has %d unused bytes\n", hermesRAMunused());
-    Alice.hctrTx = 1234; // ensure that re-pair resets these
-    Alice.hctrRx = 4321;
+    Alice.hctrTx = 0x3412; // ensure that re-pair resets these
+    Alice.hctrRx = 0x341200;
+    Bob.hctrTx = 0x785600;
+    Bob.hctrRx = 0x7856;
     if (tests & 0x01) hermesBoiler(&Alice);
     if (tests & 0x02) hermesBoiler(&Bob);
-    if (tests & 0x04) hermesPair(&Alice);
+    if (tests & 0x04) {
+        hermesPair(&Alice);
+        if (Alice.hctrTx != Bob.hctrRx) printf("\nERROR: Alice cannot send to Bob");
+        if (Bob.hctrTx != Alice.hctrRx) printf("\nERROR: Bob cannot send to Alice");
+    }
     printf("\nAvailability: Alice=%d, Bob=%d", hermesAvail(&Alice), hermesAvail(&Bob));
     int i, j;
     if (tests & 0x08) {
         printf("\n\nAlice ================================");
         hermesSend(&Alice, (uint8_t*)"*", 1);
         hermesSend(&Alice, (uint8_t*)"*", 0);
+    }
+    if (tests & 0x10) {
         i = 0;
         do {j = SendAlice(i++);} while (i != j);
     }
-    if (tests & 0x10) {
+    if (tests & 0x20) {
         printf("\n\nBob ==================================");
         i = 0;
         do {j = SendBob(i++);} while (i != j);
     }
+    if (tests & 0x40) {
+        printf("\n\nTest File: ");
+        Alice.tcFn = CharToFile;
+        file = fopen("demofile.bin", "w");
+        if (file == NULL) {
+            printf("Error creating file!\n");
+            return 1;
+        }
+        Alice.avail = 255;      // maximum size
+        hermesNewfile(&Alice);
+        i = 0;
+        do {
+            j = SendAlice(i++); // send message
+            Alice.tAck++;       // do not expect ACK
+        } while (i != j);
+        fclose(file);
+        printf("%d bytes written\n", tally);
+        file = fopen("demofile.bin", "r");
+        if (file == NULL) {
+            printf("Error opening file!\n");
+            return 1;
+        }
+        int ch;
+        do {
+            ch = fgetc(file);
+            if (ch == EOF) break;
+            hermesPutc(&Alice, ch);
+        } while (1);
+        fclose(file);
+    }
     return 0;
 }
-
