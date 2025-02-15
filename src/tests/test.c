@@ -41,6 +41,7 @@ static char* errorCode(int e) {
     case HERMES_ERROR_INVALID_LENGTH:  return "Invalid packet length";
     case HERMES_ERROR_LONG_BOILERPLT:  return "Boilerplate is too long";
     case HERMES_ERROR_MSG_TRUNCATED:   return "Message was truncated";
+    case HERMES_ERROR_EARLY_END:       return "Early END token detected";
     default: return "unknown";
     }
 }
@@ -48,13 +49,13 @@ static char* errorCode(int e) {
 static void AliceCiphertextOutput(uint8_t c) {
     c = snoop(c, '-');
     int r = hermesPutc(&Bob, c);
-    if (r) printf("\n*** Bob returned %d: %s", r, errorCode(r));
+    if (r) printf("\n*** Bob returned %d: %s, ", r, errorCode(r));
 }
 
 static void BobCiphertextOutput(uint8_t c) {
     c = snoop(c, '~');
     int r = hermesPutc(&Alice, c);
-    if (r) printf("\n*** Alice returned %d: %s", r, errorCode(r));
+    if (r) printf("\n*** Alice returned %d: %s, ", r, errorCode(r));
 }
 
 // Received-plaintest functions
@@ -188,7 +189,7 @@ int main() {
         i = 0;
         do {j = SendBob(i++);} while (i != j);
     }
-    if (tests & 0x40) {
+    if (tests & 0x40) { // file interface not working
         printf("\n\nTest File: ");
         Alice.tcFn = CharToFile;
         file = fopen("demofile.bin", "w");

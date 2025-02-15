@@ -120,22 +120,19 @@ The pairing request, `1A-35-00-CA-...`, triggers the above message. Upon recepti
 
 Each encrypted message elicits an ACK response. The ACK counters of each port stay synchronized when everything is operating normally.
 
-## Error recovery
+Errors are handled by re-transmitting messages that didn't get through, as shown in `test.c`.
 
-Errors in the header usually throw the keystreams out of sync. The only recovery is a re-pair sequence, which occurs after the data stops streaming (a `12` is seen). Payload errors may beve other options.
+## File streaming (proposed)
 
-If the streaming medium is UDP, the most common error is completely dropped packets. The sender doesn't know whether or not ACK has been sent, so to avoid this mess use TCP.
+The same scheme used for messaging can be used for encrypting files. The port writes to the file with the transmit channel and reads from it with the receive channel. The entire repertoire of file access functions is a bit much to implement, so a cut-down API should be able to handle basic file read/write.
 
-### Error in MESSAGE
+A file should consist of:
 
-Errors in the message (or HMAC) cause a HMAC failure, but don't affect keystream sync. In that case, the original message is may be  re-encrypted using new keystream segment, which rules out replay attacks. `hermesSend` returns 0.
+A boilerplate
+A challenge to set a random IV
+Authenticated message(s)
 
-### Error in ACK
+File-like streaming is used for writing. Creating the file writes the boilerplate and challenge. Writing to the file appends a block at a time to the output. Every 1024 blocks, the message HMAC is written and a new message is begun. Closing the file saves any remaining data in the block and writes the HMAC.
 
-If the ACK has a HMAC failure, it should re-sync. If it is missing, the application must time out, re-pair, reset the Ack counter in the `txbuf`, and `ResendMessage`.
-
-### Error in pairing
-
-If `hermesAvail` does not return non-zero a reasonable time after `hermesPair`, the pairing handshake did not complete due to a communication error. The calling app should try again.
-
+File reading is a little more tricky due to the need to scan for `12` markers. Padding could be added to put the `12`s on 512-byte boundaries.
 

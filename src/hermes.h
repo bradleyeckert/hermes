@@ -5,11 +5,11 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_LENGTH_LENGTH        2   /* Bytes in message length, 2 to 4 */
+#define HERMES_LENGTH_LENGTH        4   /* Bytes in message length, 2 to 4 */
 #define HERMES_IV_LENGTH           16   /* Bytes in IV, should be 16 */
 #define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC, may be 8 or 16 */
-#define HERMES_RXBUF_LENGTH       128   /* RX buffer length, a multiple of 16 */
-#define HERMES_TXBUF_LENGTH       128   /* TX buffer length, a multiple of 16 */
+#define HERMES_RXBUF_BLOCKS         3   /* RX buffer length in blocks of 64 */
+#define HERMES_TXBUF_BLOCKS         3   /* TX buffer length in blocks of 64 */
 
 // Message tags (mostly 24 to 31)
 #define HERMES_TAG_END             18   /* signal end of message (don't change) */
@@ -32,6 +32,7 @@
 #define HERMES_ERROR_INVALID_LENGTH 7
 #define HERMES_ERROR_LONG_BOILERPLT 8
 #define HERMES_ERROR_MSG_TRUNCATED  9
+#define HERMES_ERROR_EARLY_END     10
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
@@ -79,8 +80,8 @@ typedef struct
     const uint8_t *ckey;    // encryption/decryption key
     const uint8_t *hkey;    // HMAC signing key
     uint8_t hmac[HERMES_HMAC_LENGTH];
-    uint8_t rxbuf[HERMES_RXBUF_LENGTH];
-    uint8_t txbuf[HERMES_TXBUF_LENGTH];
+    uint8_t rxbuf[HERMES_RXBUF_BLOCKS << 6];
+    uint8_t txbuf[HERMES_TXBUF_BLOCKS << 6];
     uint32_t length;        // received message length
     uint16_t i;
     uint8_t tag;            // received message type
@@ -92,7 +93,7 @@ typedef struct
     // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
-    uint8_t avail;          // max size of message you can send = avail*64 bytes
+    uint16_t avail;         // max size of message you can send = avail*64 bytes
 } port_ctx;
 
 
@@ -162,12 +163,12 @@ int hermesRAMunused (void);
 int hermesNewfile(port_ctx *ctx);
 
 
-#if ((HERMES_RXBUF_LENGTH < 64) || (HERMES_RXBUF_LENGTH > 16320))
-#error Invalid value for HERMES_RXBUF_LENGTH
+#if ((HERMES_RXBUF_BLOCKS < 1) || (HERMES_RXBUF_BLOCKS > 65535))
+#error Invalid value for HERMES_RXBUF_BLOCKS
 #endif
 
-#if ((HERMES_TXBUF_LENGTH < 64) || (HERMES_TXBUF_LENGTH > 16320))
-#error Invalid value for HERMES_TXBUF_LENGTH
+#if ((HERMES_TXBUF_BLOCKS < 1) || (HERMES_TXBUF_BLOCKS > 65535))
+#error Invalid value for HERMES_TXBUF_BLOCKS
 #endif
 
 #endif /* __TCSTREAMS_H__ */

@@ -56,7 +56,7 @@ static void SendByte(port_ctx *ctx, uint8_t c) {
 }
 
 #define HDRlength (HERMES_LENGTH_LENGTH+2)      /* Header length (tag+len+~LSB) */
-#define ivADlength  1                           /* Associated data length */
+#define ivADlength  2                           /* Associated data length */
 
 // Send: Tag[1], Length[2], ~Length[2], format[1]
 static void SendHeader(port_ctx *ctx, int tag, uint32_t msglen) {
@@ -118,7 +118,8 @@ static int SendIV(port_ctx *ctx, int tag) {
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
         SendByte(ctx, mIV[i]);
     }
-    SendByte(ctx, HERMES_RXBUF_LENGTH >> 6) ;
+    SendByte(ctx, HERMES_RXBUF_BLOCKS) ;
+    SendByte(ctx, HERMES_RXBUF_BLOCKS >> 8) ;
     SendTxHash(ctx);
     ctx->cInitFn((void *)&*ctx->tcCtx, ctx->ckey, cIV);
     ctx->tReady = 1;
@@ -139,7 +140,7 @@ static int SendACK (port_ctx *ctx, int tag, uint8_t c) {
 }
 
 #define PREAMBLE_SIZE 3
-#define MAX_TX_LENGTH (HERMES_TXBUF_LENGTH - PREAMBLE_SIZE)
+#define MAX_TX_LENGTH ((HERMES_TXBUF_BLOCKS << 6) - PREAMBLE_SIZE)
 
 // Encrypt and send a message
 static int ResendMessage (port_ctx *ctx) {
@@ -235,7 +236,7 @@ uint32_t hermesAvail(port_ctx *ctx){
     return rxAvail;
 }
 
-// Encrypt and send a message
+// Encrypt and send a message, buffering in case of transmission error.
 int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
     int r = 0;
     uint32_t len = bytes;
@@ -268,6 +269,7 @@ reset:      hermesPair(ctx);
         }
         return r;
     } // -----------------------------------------------------------------------
+    int ended = (c == HERMES_TAG_END);          // distinguish '12' from '10 02'
     if (ctx->escaped) {
         ctx->escaped = 0;
         if (c > 3) goto reset;
@@ -279,7 +281,7 @@ reset:      hermesPair(ctx);
     } // -----------------------------------------------------------------------
     ctx->hPutcFn((void *)&*ctx->rhCtx, c);      // add to hash
     switch (ctx->state) {
-    case 0: // valid tags are 0x18 to 0x1F
+    case 0: // valid tags are 0x18 to 0x1F      // only valid tags...
         if ((c & 0xF8) != 0x18) break;
         if (c == HERMES_TAG_CHALLENGE) {
             ctx->hctrRx = 0;
@@ -321,6 +323,7 @@ next_header_char:
         r = HERMES_ERROR_INVALID_LENGTH;
         break;
     case 6: // message data begins here
+        PRINTF("\nIncoming packet, tag=%d, length=%d\n", ctx->tag, ctx->length);
         ctx->rxbuf[0] = c;
         ctx->i = 1;
         ctx->state++;
@@ -337,13 +340,19 @@ next_header_char:
         }
         break;
     case 7: // get payload
+        if (ended) {
+            ctx->state++;
+            break;
+        }
         ctx->rxbuf[ctx->i++] = c;
         temp = ctx->length - HDRlength;
+        // we would rather not trust temp, using 'ended' to end this state,
+        // but the hmac needs to be snagged before the actual HMAC comes in.
         i = ctx->i;
         if (i == (temp - HERMES_HMAC_LENGTH)) {
             ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
         }
-        if ((i == temp) || (i == HERMES_RXBUF_LENGTH)) {
+        if ((i == temp) || (i == (HERMES_RXBUF_BLOCKS << 6))) {
             if (ctx->tag == HERMES_TAG_BOILERPLATE) {
                 if (i > 63) {
                     r = HERMES_ERROR_LONG_BOILERPLT;
@@ -357,9 +366,10 @@ next_header_char:
         }
         break;
     case 8: // test HMAC, then process the payload
- //       PRINTF("\nShould be 18=%d");
+ //       PRINTF("\nShould be 18=%d", c);
         ctx->state = 0;
         temp = ctx->length - (HDRlength + HERMES_HMAC_LENGTH);
+        PRINTF("\ntemp=%d, i=", ctx->temp, ctx->i);
         badHMAC = 0;
         for (i = 0; i < HERMES_HMAC_LENGTH; i++) {
             if (ctx->hmac[i] != ctx->rxbuf[i+temp]) {
@@ -385,7 +395,7 @@ next_header_char:
             ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[HERMES_IV_LENGTH], cIV, 1);
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, cIV);
             memcpy(&ctx->hctrTx, cIV, 8);
-            ctx->avail = ctx->rxbuf[2*HERMES_IV_LENGTH];
+            memcpy(&ctx->avail, &ctx->rxbuf[2*HERMES_IV_LENGTH], 2);
             ctx->rReady = 1;
             ctx->rAck = 1;
             PRINTF("\nReceived IV, tag=%d; ", ctx->tag);
@@ -408,10 +418,12 @@ next_header_char:
                 SendACK(ctx, HERMES_TAG_NACK, ctx->rAck);
                 r = 0; // override "bad HMAC", sender gets a second chance
             } else {
-                memcpy (&temp, ctx->rxbuf, 2); // little-endian length
-                ctx->rAck = ctx->rxbuf[2];
+                memcpy (&temp, ctx->rxbuf, 2);  // little-endian length
+                c = ctx->rxbuf[2];
+                if (c & 0x80) break;            // no ACK for this message
+                ctx->rAck = c;
                 ctx->tmFn(&ctx->rxbuf[PREAMBLE_SIZE], temp);
-                SendACK(ctx, HERMES_TAG_ACK, ctx->rAck + 1);
+                SendACK(ctx, HERMES_TAG_ACK, (c + 1) & 0x7F);
             }
             break;
         case HERMES_TAG_ACK:
@@ -439,7 +451,7 @@ next_header_char:
         }
         break;
     case 9: // wait for the end tag
-        if (c == HERMES_TAG_END) {
+        if (ended) {
             ctx->state = 0;
             hermesPair(ctx);
         }
