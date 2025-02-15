@@ -8,8 +8,6 @@
 #define HERMES_LENGTH_LENGTH        4   /* Bytes in message length, 2 to 4 */
 #define HERMES_IV_LENGTH           16   /* Bytes in IV, should be 16 */
 #define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC, may be 8 or 16 */
-#define HERMES_RXBUF_BLOCKS         3   /* RX buffer length in blocks of 64 */
-#define HERMES_TXBUF_BLOCKS         3   /* TX buffer length in blocks of 64 */
 
 // Message tags (mostly 24 to 31)
 #define HERMES_TAG_END             18   /* signal end of message (don't change) */
@@ -32,10 +30,18 @@
 #define HERMES_ERROR_INVALID_LENGTH 7
 #define HERMES_ERROR_LONG_BOILERPLT 8
 #define HERMES_ERROR_MSG_TRUNCATED  9
-#define HERMES_ERROR_EARLY_END     10
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
+
+enum States {
+  IDLE = 0,
+  DISPATCH,
+  GET_BOILER,
+  GET_IV,
+  GET_PAYLOAD,
+  AUTHENTICATE
+};
 
 /*
 Stream I/O is through functions. Bytes are transmitted by an output function.
@@ -52,11 +58,11 @@ The FSM is not full-duplex. If the FSM has wait for the UART transmitter
 
 typedef void (*hermes_ciphrFn)(uint8_t c);   // output raw ciphertext byte
 typedef void (*hermes_plainFn)(const uint8_t *src, uint32_t length);
-typedef int (*hermes_rngFn)  (uint8_t *dest, int length);
+typedef int  (*hermes_rngFn)  (uint8_t *dest, int length);
 
 typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, int hsize, uint64_t ctr);
 typedef void (*hmac_putcFn)(size_t *ctx, uint8_t c);
-typedef int (*hmac_finalFn)(size_t *ctx, uint8_t *out);
+typedef int  (*hmac_finalFn)(size_t *ctx, uint8_t *out);
 typedef void (*crypt_initFn)(size_t *ctx, const uint8_t *key, const uint8_t *iv);
 typedef void (*crypt_blockFn)(size_t *ctx, const uint8_t *in, uint8_t *out, int mode);
 
@@ -80,12 +86,16 @@ typedef struct
     const uint8_t *ckey;    // encryption/decryption key
     const uint8_t *hkey;    // HMAC signing key
     uint8_t hmac[HERMES_HMAC_LENGTH];
-    uint8_t rxbuf[HERMES_RXBUF_BLOCKS << 6];
-    uint8_t txbuf[HERMES_TXBUF_BLOCKS << 6];
-    uint32_t length;        // received message length
-    uint16_t i;
+    uint8_t *rxbuf;
+    uint8_t *txbuf;
+    enum States state;      // of the FSM
+    uint16_t rBlocks;       // size of rxbuf in blocks
+    uint16_t tBlocks;       // size of rxbuf in blocks
+    uint16_t avail;         // max size of message you can send = avail*64 bytes
+    uint16_t ridx;          // rxbuf index
+    uint8_t bidx;           // block index (0 to 16)
+    uint8_t triggerHMAC;
     uint8_t tag;            // received message type
-    uint8_t state;          // of the FSM
     uint8_t escaped;        // assembling a 2-byte escape sequence
     uint8_t retries;        // count the NACKs
     uint8_t rAck;           // receiver Ack
@@ -93,7 +103,6 @@ typedef struct
     // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
-    uint16_t avail;         // max size of message you can send = avail*64 bytes
 } port_ctx;
 
 
@@ -115,6 +124,7 @@ void hermesNoPorts(void);
  * @param hmac_key    32-byte HMAC key
  */
 void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
+                   uint16_t rxBlocks, uint16_t txBlocks,
                    hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *enc_key, const uint8_t *hmac_key);
 
@@ -162,13 +172,5 @@ int hermesRAMused (int ports);
 int hermesRAMunused (void);
 int hermesNewfile(port_ctx *ctx);
 
-
-#if ((HERMES_RXBUF_BLOCKS < 1) || (HERMES_RXBUF_BLOCKS > 65535))
-#error Invalid value for HERMES_RXBUF_BLOCKS
-#endif
-
-#if ((HERMES_TXBUF_BLOCKS < 1) || (HERMES_TXBUF_BLOCKS > 65535))
-#error Invalid value for HERMES_TXBUF_BLOCKS
-#endif
 
 #endif /* __TCSTREAMS_H__ */

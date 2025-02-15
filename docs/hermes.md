@@ -132,7 +132,10 @@ A boilerplate
 A challenge to set a random IV
 Authenticated message(s)
 
-File-like streaming is used for writing. Creating the file writes the boilerplate and challenge. Writing to the file appends a block at a time to the output. Every 1024 blocks, the message HMAC is written and a new message is begun. Closing the file saves any remaining data in the block and writes the HMAC.
+File-like streaming is used for writing. Creating the file writes the boilerplate and challenge. Writing to the file appends a block at a time to the output. Every 256 blocks, the message HMAC is written and a new message is begun. Closing the file saves any remaining data in the block and writes the HMAC.
 
-File reading is a little more tricky due to the need to scan for `12` markers. Padding could be added to put the `12`s on 512-byte boundaries.
+File reading is designed for decryption of each message in sequence, dependent on a sufficiently large receive buffer.
 
+## To do
+
+Put buffer block sizes in the port context instead as #defines. A file I/O port will need a bigger RX buffer. The size units are 64-byte blocks, so an 8-bit block size allows up to a 16KB buffer.

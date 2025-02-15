@@ -41,7 +41,6 @@ static char* errorCode(int e) {
     case HERMES_ERROR_INVALID_LENGTH:  return "Invalid packet length";
     case HERMES_ERROR_LONG_BOILERPLT:  return "Boilerplate is too long";
     case HERMES_ERROR_MSG_TRUNCATED:   return "Message was truncated";
-    case HERMES_ERROR_EARLY_END:       return "Early END token detected";
     default: return "unknown";
     }
 }
@@ -154,13 +153,13 @@ int main() {
     int tests = 0x3F;   // enable these tests...
 //    snoopy = 1;         // display the wire traffic
     hermesNoPorts();
-    hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE",
+    hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 3, 3,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput,
                   my_encryption_key, my_signature_key);
-    hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB",
+    hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 3, 3,
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput,
                   my_encryption_key, my_signature_key);
-    printf("Context RAM usage: %d bytes per port\n", hermesRAMused(2)/2);
+    printf("Static context RAM usage: %d bytes per port\n", hermesRAMused(2)/2);
     printf("context_memory has %d unused bytes\n", hermesRAMunused());
     Alice.hctrTx = 0x3412; // ensure that re-pair resets these
     Alice.hctrRx = 0x341200;
