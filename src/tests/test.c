@@ -37,7 +37,6 @@ static char* errorCode(int e) {
     case HERMES_ERROR_TRNG_FAILURE:    return "TRNG failure - need to re-initialize";
     case HERMES_ERROR_MISSING_KEY:     return "Missing key - maybe has NULL value";
     case HERMES_ERROR_BAD_HMAC:        return "Invalid HMAC";
-    case HERMES_ERROR_BAD_HMAC_LEN:    return "Invalid HMAC length";
     case HERMES_ERROR_INVALID_LENGTH:  return "Invalid packet length";
     case HERMES_ERROR_LONG_BOILERPLT:  return "Boilerplate is too long";
     case HERMES_ERROR_MSG_TRUNCATED:   return "Message was truncated";
@@ -150,7 +149,7 @@ void CharToFile(uint8_t c) {
 }
 
 int main() {
-    int tests = 0x3F;   // enable these tests...
+    int tests = 0x7F;   // enable these tests...
 //    snoopy = 1;         // display the wire traffic
     hermesNoPorts();
     hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 3, 3,
@@ -188,34 +187,28 @@ int main() {
         i = 0;
         do {j = SendBob(i++);} while (i != j);
     }
+    printf("\nAlice sent %d bytes", Alice.counter);
+    printf("\nBob sent %d bytes", Bob.counter);
     if (tests & 0x40) { // file interface not working
-        printf("\n\nTest File: ");
+        printf("\n\nTest write to demofile.bin ");
         Alice.tcFn = CharToFile;
         file = fopen("demofile.bin", "w");
         if (file == NULL) {
-            printf("Error creating file!\n");
+            printf("\nError creating file!");
             return 1;
         }
-        Alice.avail = 255;      // maximum size
-        hermesNewfile(&Alice);
-        i = 0;
-        do {
-            j = SendAlice(i++); // send message
-            Alice.tAck++;       // do not expect ACK
-        } while (i != j);
+        hermesFileNew(&Alice);
+        for (int i = 0; i < 100; i++) {
+            hermesFileOut(&Alice, (uint8_t*)"ABCDEFGHIJKLMNOP", 16);
+        }
+        hermesFileFinal(&Alice);
         fclose(file);
-        printf("%d bytes written\n", tally);
+        printf("\nReading back demofile.bin ");
         file = fopen("demofile.bin", "r");
         if (file == NULL) {
-            printf("Error opening file!\n");
+            printf("\nError opening file!");
             return 1;
         }
-        int ch;
-        do {
-            ch = fgetc(file);
-            if (ch == EOF) break;
-            hermesPutc(&Alice, ch);
-        } while (1);
         fclose(file);
     }
     return 0;

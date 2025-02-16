@@ -5,20 +5,23 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_LENGTH_LENGTH        4   /* Bytes in message length, 2 to 4 */
+#define HERMES_ALLOC_MEM_UINT32S  380
+#define HERMES_FILE_MESSAGE_SIZE  512
+
 #define HERMES_IV_LENGTH           16   /* Bytes in IV, should be 16 */
 #define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC, may be 8 or 16 */
 
 // Message tags (mostly 24 to 31)
 #define HERMES_TAG_END             18   /* signal end of message (don't change) */
-#define HERMES_TAG_GET_BOILER      24   /* request boilerplate */
-#define HERMES_TAG_BOILERPLATE     25   /* boilerplate */
-#define HERMES_TAG_RESET           26   /* trigger a 2-way IV init */
-#define HERMES_TAG_CHALLENGE       27   /* signal a 2-way IV init */
-#define HERMES_TAG_RESPONSE        28   /* signal a 1-way IV init */
-#define HERMES_TAG_MESSAGE         29   /* signal an encrypted message */
-#define HERMES_TAG_ACK             30   /* signal an encrypted message */
-#define HERMES_TAG_NACK            31   /* signal an encrypted message */
+#define HERMES_TAG_GET_BOILER      20   /* request boilerplate */
+#define HERMES_TAG_BOILERPLATE     21   /* boilerplate */
+#define HERMES_TAG_RESET           22   /* trigger a 2-way IV init */
+#define HERMES_TAG_CHALLENGE       23   /* signal a 2-way IV init */
+#define HERMES_TAG_RESPONSE        24   /* signal a 1-way IV init */
+#define HERMES_TAG_MESSAGE         25   /* signal an encrypted message */
+#define HERMES_TAG_ACK             26   /* signal an ACK */
+#define HERMES_TAG_NACK            27   /* signal a NACK */
+#define HERMES_TAG_RAWTX           31
 
 // Error tags
 #define HERMES_ERROR_INVALID_STATE  1   /* FSM reached an invalid state */
@@ -26,10 +29,9 @@
 #define HERMES_ERROR_TRNG_FAILURE   3   /* Bad RNG value */
 #define HERMES_ERROR_MISSING_KEY    4
 #define HERMES_ERROR_BAD_HMAC       5
-#define HERMES_ERROR_BAD_HMAC_LEN   6
-#define HERMES_ERROR_INVALID_LENGTH 7
-#define HERMES_ERROR_LONG_BOILERPLT 8
-#define HERMES_ERROR_MSG_TRUNCATED  9
+#define HERMES_ERROR_INVALID_LENGTH 6
+#define HERMES_ERROR_LONG_BOILERPLT 7
+#define HERMES_ERROR_MSG_TRUNCATED  8
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
@@ -89,6 +91,7 @@ typedef struct
     uint8_t *rxbuf;
     uint8_t *txbuf;
     enum States state;      // of the FSM
+    uint32_t counter;       // TX counter
     uint16_t rBlocks;       // size of rxbuf in blocks
     uint16_t tBlocks;       // size of rxbuf in blocks
     uint16_t avail;         // max size of message you can send = avail*64 bytes
@@ -117,11 +120,14 @@ void hermesNoPorts(void);
  * @param ctx         Port identifier
  * @param boilerplate Plaintext port identification boilerplate
  * @param protocol    AEAD protocol used: 0 = xchacha20-siphash
+ * @param name        Name of port (for debugging)
+ * @param rxBlocks    Size of receive buffer in 64-byte blocks
+ * @param txBlocks    Size of transmit buffer in 64-byte blocks
  * @param boiler      Handler for received boilerplate (src, n)
  * @param plain       Handler for received data (src, n)
  * @param ciphr       Handler for char transmission (c)
  * @param enc_key     32-byte encryption key
- * @param hmac_key    32-byte HMAC key
+ * @param hmac_key    16-byte HMAC key
  */
 void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, uint16_t txBlocks,
@@ -134,7 +140,7 @@ void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char
  * @param c   Incoming byte or command (command if > 255)
  * @return    0 if okay, otherwise HERMES_ERROR_?
  */
-int hermesPutc(port_ctx *ctx, int c);
+int hermesPutc(port_ctx *ctx, uint16_t c);
 
 
 /** Trigger pairing. Resets the encrypted connection.
@@ -145,7 +151,6 @@ void hermesPair(port_ctx *ctx);
 
 /** Trigger boilerplate.
  * @param ctx Port identifier
- * @return    0 if okay, otherwise HERMES_ERROR_?
  * The received boilerplate comes out hermesAddPort's boiler function.
  */
 void hermesBoiler(port_ctx *ctx);
@@ -170,7 +175,11 @@ uint32_t hermesAvail(port_ctx *ctx);
 
 int hermesRAMused (int ports);
 int hermesRAMunused (void);
-int hermesNewfile(port_ctx *ctx);
+
+int hermesFileNew(port_ctx *ctx);
+void hermesFileInit (port_ctx *ctx);
+void hermesFileFinal (port_ctx *ctx);
+void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len);
 
 
 #endif /* __TCSTREAMS_H__ */

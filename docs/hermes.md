@@ -22,8 +22,8 @@ The default protocol used by `hermes` is XChaCha20-SipHash. Xchacha20 is a long-
 Cryptographic functions are called through function pointers held in the port's `struct`. Other AEAD algorithms may be plugged in by using the default setup as a template. To keep it simple, the following lengths are fixed:
 
 - 256-bit Encryption key
-- 128-bit Encryption IV
 - 128-bit HMAC key
+- 128-bit Encryption IV
 - 128-bit HMAC hash
 
 ## Language dependencies
@@ -32,7 +32,7 @@ Cryptographic functions are called through function pointers held in the port's 
 * Little-endian byte order
 * Hardware-specific functions in `*HW.c` file(s)
 
-Most of the byte-order dependency comes from using `memcpy` to move data and from byte arrays. It could be replaced with a `MEMCPY` macro that substitutes a byte-reversing version of `memcpy` for big-endian targets.
+Most of the byte-order dependency comes from using `memcpy` to move data to and from byte arrays. It could be replaced with a `MEMCPY` macro that substitutes a byte-reversing version of `memcpy` for big-endian targets.
 
 ## Hardware requirements
 
@@ -86,18 +86,23 @@ Errors are handled by re-transmitting messages that didn't get through, as shown
 
 ## File streaming (proposed)
 
-The same scheme used for messaging can be used for encrypting files. The port writes to the file with the transmit channel and reads from it with the receive channel. The entire repertoire of file access functions is a bit much to implement, so a cut-down API should be able to handle basic file read/write.
+The same scheme used for messaging can be used for encrypting files. The port writes to the file with the transmit channel and reads from it with the receive channel.
 
 A file should consist of:
 
-A boilerplate
-A challenge to set a random IV
-Authenticated message(s)
+- A boilerplate
+- A challenge to set a random IV
+- Authenticated message(s)
 
-File-like streaming is used for writing. Creating the file writes the boilerplate and challenge. Writing to the file appends a block at a time to the output. Every 256 blocks, the message HMAC is written and a new message is begun. Closing the file saves any remaining data in the block and writes the HMAC.
+File-like streaming is used for writing. Creating the file writes the boilerplate and challenge. Writing to the file appends a block at a time to the output. Every 4K bytes, the message HMAC is written and a new message is begun. The sequence of messages is serialized. The advantage of the 4K block is that one bad block does not ruin the whole file.
 
-File reading is designed for decryption of each message in sequence, dependent on a sufficiently large receive buffer.
+Closing the file saves any remaining data in the block and writes the HMAC. Hermes does not impose a length limit on the file, but it does require each message length to be a multiple of 16 bytes. The way to meet this requirement is to write to the file 16 or 32 bytes at a time.
+
+For example, a 24-bit stereo CODEC produces 6-byte samples. Five samples pack into 32 bytes, with 2 unused bytes (maybe used as telemetry). Any data not a multiple of 16 bytes long is padded with zeros.
+
+File reading is outside the scope of Hermes. Messages can only be read from the beginning, so the utility of reading them with Hermes would be limited. However, 
 
 ## To do
 
-Put buffer block sizes in the port context instead as #defines. A file I/O port will need a bigger RX buffer. The size units are 64-byte blocks, so an 8-bit block size allows up to a 16KB buffer.
+File read demo
+Key rotation
