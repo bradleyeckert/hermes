@@ -14,7 +14,6 @@ AEAD-secured ports (for UARTs, etc.)
 #define ALLOC_MEM_UINT32S 380
 
 #define TRACE 0
-#include <stdio.h>
 
 #if (TRACE)
 #include <stdio.h>
@@ -91,6 +90,7 @@ static void SendBoiler(port_ctx *ctx) {         // send boilerplate packet
 static void SendTxHash(port_ctx *ctx){          // finish authenticated packet
     uint8_t hash[HERMES_HMAC_LENGTH];
     ctx->hFinalFn((void *)&*ctx->thCtx, hash);
+    ctx->hctrTx++;
     ctx->tcFn(0x10);                            // HMAC marker
     ctx->tcFn(0x04);
     for (int i = 0; i < HERMES_HMAC_LENGTH; i++) SendByteU(ctx, hash[i]);
@@ -269,7 +269,6 @@ int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
 int hermesPutc(port_ctx *ctx, int c){
     int r = 0;
     int temp, i, badHMAC;
-    uint8_t cIV[HERMES_IV_LENGTH];
     if (c & 0xFF00) {
         switch (c) {
         case HERMES_CMD_RESET:
@@ -287,9 +286,9 @@ reset:      hermesPair(ctx);
         ctx->escaped = 0;
         if (c > 3) switch(c) {
             case 4:                             // 10h 04h captures HMAC
-                ctx->triggerHMAC = 1;
-                printf("^");
                 ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac); // snag before hash
+                ctx->hctrRx++;
+                ctx->MACed = 1;
                 return 0;
             default: goto reset;
         } else {
@@ -313,11 +312,12 @@ reset:      hermesPair(ctx);
         ctx->hInitFn((void *)&*ctx->rhCtx, ctx->hkey, HERMES_HMAC_LENGTH, ctx->hctrRx);
         ctx->hPutcFn((void *)&*ctx->rhCtx, c);
         ctx->tag = c;
-        ctx->state = DISPATCH; //LENGTH0;
+        ctx->MACed = 0;
+        ctx->state = DISPATCH;
         break;
         // check ABORTING is it used?
     case DISPATCH: // message data begins here
-        PRINTF("\nIncoming packet, tag=%d, length=%d\n", ctx->tag, ctx->length);
+        PRINTF("\n%s incoming packet, tag=%d\n", ctx->name, ctx->tag);
         ctx->rxbuf[0] = c;
         ctx->ridx = 1;
         ctx->bidx = 0;
@@ -337,13 +337,17 @@ reset:      hermesPair(ctx);
             break;
         case HERMES_TAG_CHALLENGE:
         case HERMES_TAG_RESPONSE:
- //           ctx->state = GET_IV;
+            ctx->state = GET_IV;
             break;
         }
         break;
     case GET_IV:
         ctx->rxbuf[ctx->ridx++] = c;
-        if (ctx->ridx == HERMES_IV_LENGTH) ctx->state = GET_PAYLOAD;
+        if (ctx->ridx == HERMES_IV_LENGTH) {
+            PRINTF("\nSet temporary IV for decrypting the secret IV ");
+            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, ctx->rxbuf);
+            ctx->state = GET_PAYLOAD;
+        }
         break;
     case GET_BOILER:
         if (ctx->ridx == 64) {
@@ -353,12 +357,23 @@ reset:      hermesPair(ctx);
         if (ended) {
             ctx->boilFn(ctx->rxbuf, ctx->ridx);
             ctx->state = IDLE;
-        } else ctx->rxbuf[ctx->ridx++] = c;
+        } else {
+            ctx->rxbuf[ctx->ridx++] = c;
+        }
         break;
     case GET_PAYLOAD:
-        if (!ended) { // if ended, fall through to authenticate
+        if (!ended) {
             ctx->rxbuf[ctx->ridx++] = c;
-            if (ctx->ridx != (ctx->rBlocks << 6)) break;
+            if (ctx->ridx == (ctx->rBlocks << 6)) {
+                ctx->state = AUTHENTICATE;
+            }
+            temp = ctx->ridx;
+            if (!ctx->MACed && !(temp & 15)) {
+                temp -= 16; // -> beginning of block
+                PRINTF("\n%s decrypting payload rxbuf[%d]; ", ctx->name, temp);
+                ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[temp], &ctx->rxbuf[temp], 1);
+            }
+            break;
         }
     case AUTHENTICATE:
         ctx->state = IDLE;
@@ -370,9 +385,9 @@ reset:      hermesPair(ctx);
                 badHMAC = 1;
             }
         }
-        PRINTF("\n%s received packet of length %d, tag %d; ",
+        PRINTF("\n%s received authentic packet of length %d, tag %d; ",
                ctx->name, temp, ctx->tag);
-        if (badHMAC) { PRINTf("\n******************* Bad HMAC ******************"); }
+        if (badHMAC) PRINTf("\n******************* Bad HMAC ******************");
         switch (ctx->tag) {
         case HERMES_TAG_CHALLENGE:
             ctx->tReady = 0;
@@ -384,10 +399,8 @@ reset:      hermesPair(ctx);
                 r = HERMES_ERROR_INVALID_LENGTH;
                 break;
             }
-            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, ctx->rxbuf); // decrypt with mIV
-            ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[HERMES_IV_LENGTH], cIV, 1);
-            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, cIV);
-            memcpy(&ctx->hctrTx, cIV, 8);
+            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, &ctx->rxbuf[HERMES_IV_LENGTH]);
+            memcpy(&ctx->hctrTx, &ctx->rxbuf[HERMES_IV_LENGTH], 8);
             memcpy(&ctx->avail, &ctx->rxbuf[2*HERMES_IV_LENGTH], 2);
             ctx->rReady = 1;
             ctx->rAck = 1;
@@ -398,10 +411,6 @@ reset:      hermesPair(ctx);
             }
             break;
         case HERMES_TAG_MESSAGE:
-            for (i = 0; i < temp; i += 16) {
-                PRINTF("\nDecrypting MESSAGE, block counter = %d; ", ctx->rcCtx->blox);
-                ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[i], &ctx->rxbuf[i], 1);
-            }
             if (badHMAC) {
                 PRINTf("\n%s is sending NACK, ", ctx->name);
                 ctx->retries++;
@@ -420,8 +429,6 @@ reset:      hermesPair(ctx);
             }
             break;
         case HERMES_TAG_ACK:
-            PRINTF("\nDecrypting ACK, block counter = %d, ", ctx->rcCtx->blox);
-            ctx->cBlockFn((void *)&*ctx->rcCtx, ctx->rxbuf, ctx->rxbuf, 1);
             if (badHMAC) {
                 PRINTF("DROPPED ACK, ");
                 break;
@@ -431,8 +438,6 @@ reset:      hermesPair(ctx);
             ctx->retries = 0;
             break;
         case HERMES_TAG_NACK:
-            PRINTF("\nDecrypting NACK, block counter = %d; ", ctx->rcCtx->blox);
-            ctx->cBlockFn((void *)&*ctx->rcCtx, ctx->rxbuf, ctx->rxbuf, 1);
             if (badHMAC) {
                 PRINTF("DROPPED NACK, ");
                 break;

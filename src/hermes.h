@@ -94,7 +94,7 @@ typedef struct
     uint16_t avail;         // max size of message you can send = avail*64 bytes
     uint16_t ridx;          // rxbuf index
     uint8_t bidx;           // block index (0 to 16)
-    uint8_t triggerHMAC;
+    uint8_t MACed;          // HMAC triggered
     uint8_t tag;            // received message type
     uint8_t escaped;        // assembling a 2-byte escape sequence
     uint8_t retries;        // count the NACKs
