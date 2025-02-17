@@ -22,7 +22,7 @@ void DUMP(const uint8_t *src, uint8_t len) {
             if ((i % 33) == 0) printf("\n___");
             printf("%02X ", src[i]);
         }
-    printf("<- ");
+        printf("<- ");
     }
 }
 #define PRINTF  if (TRACE > 1) printf
@@ -95,11 +95,10 @@ static void SendTxHash(port_ctx *ctx){          // finish authenticated packet
     SendEnd(ctx);
 }
 
-// Send: Tag[1], Length[2], ~Length[1], format[1], mIV[], cIV[],
-// RXbufsize[2], HMAC[]
-static int SendIV(port_ctx *ctx, int tag) {
-    uint8_t mIV[HERMES_IV_LENGTH];
-    uint8_t cIV[HERMES_IV_LENGTH];
+// Send: Tag[1], mIV[], cIV[], RXbufsize[2], HMAC[]
+static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
+    uint8_t mIV[HERMES_IV_LENGTH];              // using these instead of txbuf
+    uint8_t cIV[HERMES_IV_LENGTH];              // to allow for re-transmission
     int r = 0;
     int c;
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
@@ -111,20 +110,20 @@ static int SendIV(port_ctx *ctx, int tag) {
     }
     memcpy(&ctx->hctrRx, cIV, 8);
     PRINTF("\n%s sending IV, tag=%d, ", ctx->name, tag);
-    SendHeader(ctx, tag);
+    SendHeader(ctx, tag);                       // TAG (also resets HMAC)
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
-        SendByte(ctx, mIV[i]);
+        SendByte(ctx, mIV[i]);                  // plaintext mIV[]
     }
     DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("New %s.hctrRx",ctx->name);
     DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("Current %s.hctrTx\n",ctx->name);
     ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->ckey, mIV);
     ctx->cBlockFn((void *)&*ctx->tcCtx, cIV, mIV, 0);
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
-        SendByte(ctx, mIV[i]);
+        SendByte(ctx, mIV[i]);                  // encrypted cIV[]
     }
-    SendByte(ctx, ctx->rBlocks) ;
+    SendByte(ctx, ctx->rBlocks) ;               // RX buffer size[2]
     SendByte(ctx, ctx->rBlocks >> 8) ;
-    SendTxHash(ctx);
+    SendTxHash(ctx);                            // HMAC
     ctx->cInitFn((void *)&*ctx->tcCtx, ctx->ckey, cIV);
     ctx->tReady = 1;
     ctx->tAck = 0;
@@ -152,12 +151,12 @@ static int ResendMessage (port_ctx *ctx) {
     uint16_t bytes;
     ctx->retries = 0;
     memcpy(&bytes, ctx->txbuf, 2);
-    bytes += PREAMBLE_SIZE;             // include preamble in the message
+    bytes += PREAMBLE_SIZE;                     // include preamble in message
     PRINTF("\n%s sending MESSAGE[%d/%d], tAck=%d, rAck=%d; ",
         ctx->name, bytes, ((bytes + 15) & ~0x0F), ctx->tAck, ctx->rAck);
-    bytes = (bytes + 15) & ~0x0F;       // send whole blocks
+    bytes = (bytes + 15) & ~0x0F;               // send whole blocks
     SendHeader(ctx, HERMES_TAG_MESSAGE);
-    for (int i = 0; i < bytes; i += 16) {   // encrypt in blocks
+    for (int i = 0; i < bytes; i += 16) {       // encrypt blocks
         PRINTF("\nEncrypting MESSAGE, block counter = %d; ", ctx->tcCtx->blox);
         ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->txbuf[i], m, 0);
         for (int j = 0; j < 16; j++) SendByte(ctx, m[j]);
@@ -181,9 +180,9 @@ void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char
                    hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *enc_key, const uint8_t *hmac_key) {
     memset(ctx, 0, sizeof(port_ctx));
-    ctx->tmFn = plain;      // plaintext output handler
-    ctx->tcFn = ciphr;      // ciphertext output handler
-    ctx->boilFn = boiler;
+    ctx->tmFn = plain;                          // plaintext output handler
+    ctx->tcFn = ciphr;                          // ciphertext output handler
+    ctx->boilFn = boiler;                       // boilerplate output handler
     ctx->ckey = enc_key;
     ctx->hkey = hmac_key;
     ctx->boil = boilerplate;
@@ -247,9 +246,9 @@ int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
         len = hermesAvail(ctx);
         PRINTF("\nTruncating message to %d bytes, ", len);
     }
-    ctx->tAck = ctx->rAck;              // tag as unacknowledged
-    memcpy(ctx->txbuf, &len, 2);        // save the length
-    ctx->txbuf[2] = ctx->tAck;          // and the message counter
+    ctx->tAck = ctx->rAck;                      // tag as unacknowledged
+    memcpy(ctx->txbuf, &len, 2);                // save the message length,
+    ctx->txbuf[2] = ctx->tAck;                  // the message counter,
     memcpy(&ctx->txbuf[PREAMBLE_SIZE], m, len); // and the input
     return ResendMessage(ctx) | r;
 }
@@ -275,14 +274,14 @@ reset:      hermesPair(ctx);
     if (ctx->escaped) {
         ctx->escaped = 0;
         if (c > 3) switch(c) {
-            case 4:                             // 10h 04h captures HMAC
-                ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac); // snag before hash
+            case 4:                             // 10h 04h triggers HMAC capture
+                ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
                 ctx->hctrRx++;
                 ctx->MACed = 1;
                 return 0;
             default: goto reset;
         } else {
-        c += 0x10;                              // 10h 00h -> 10h
+        c += 0x10;                              // 10h 02h -> 12h
         }
     }
     else if (c == 0x10) {
@@ -292,7 +291,7 @@ reset:      hermesPair(ctx);
     // FSM ---------------------------------------------------------------------
     ctx->hPutcFn((void *)&*ctx->rhCtx, c);      // add to hash
     switch (ctx->state) {
-    case IDLE: // valid tags are 0x18 to 0x1F
+    case IDLE:
         if (c < HERMES_TAG_GET_BOILER) break;   // limit range of valid tags
         if (c > HERMES_TAG_NACK)       break;
         if (c == HERMES_TAG_CHALLENGE) {
@@ -396,6 +395,7 @@ reset:      hermesPair(ctx);
             ctx->rAck = 1;
             PRINTF("\nReceived IV, tag=%d; ", ctx->tag);
             DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Received HMAC hctrRx, ");
+            DUMP((uint8_t*)&ctx->rxbuf[HERMES_IV_LENGTH], 16); PRINTF("Private cIV, ");
             if (ctx->tag == HERMES_TAG_CHALLENGE) {
                 r = SendIV(ctx, HERMES_TAG_RESPONSE);
             }
@@ -453,10 +453,13 @@ void hermesFileInit (port_ctx *ctx) {
 }
 
 int hermesFileNew(port_ctx *ctx) {
+    ctx->counter = 0;
     ctx->rReady = 0;
     ctx->tReady = 0;
+    ctx->hctrTx = 0;
     SendBoiler(ctx);
     int r = SendIV(ctx, HERMES_TAG_CHALLENGE);
+    ctx->hctrTx = ctx->hctrRx;
     hermesFileInit(ctx);
     return r;
 }
@@ -469,7 +472,7 @@ void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len) {
         int siz = len;
         if (siz > 15) {siz = 16;}
         else {memset(ctx->txbuf, 0, 16);}
-        memcpy(ctx->txbuf, &src, siz);
+        memcpy(ctx->txbuf, src, siz);
         ctx->cBlockFn((void *)&*ctx->tcCtx, ctx->txbuf, ctx->txbuf, 0);
         for (int i = 0; i < 16; i++) {
             SendByte(ctx, ctx->txbuf[i]);

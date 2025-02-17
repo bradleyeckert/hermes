@@ -192,7 +192,7 @@ int main() {
     if (tests & 0x40) { // file interface not working
         printf("\n\nTest write to demofile.bin ");
         Alice.tcFn = CharToFile;
-        file = fopen("demofile.bin", "w");
+        file = fopen("demofile.bin", "wb");
         if (file == NULL) {
             printf("\nError creating file!");
             return 1;
@@ -202,13 +202,6 @@ int main() {
             hermesFileOut(&Alice, (uint8_t*)"ABCDEFGHIJKLMNOP", 16);
         }
         hermesFileFinal(&Alice);
-        fclose(file);
-        printf("\nReading back demofile.bin ");
-        file = fopen("demofile.bin", "r");
-        if (file == NULL) {
-            printf("\nError opening file!");
-            return 1;
-        }
         fclose(file);
     }
     return 0;

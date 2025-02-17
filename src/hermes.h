@@ -6,7 +6,7 @@
 #include "siphash/src/siphash.h"
 
 #define HERMES_ALLOC_MEM_UINT32S  380
-#define HERMES_FILE_MESSAGE_SIZE  512
+#define HERMES_FILE_MESSAGE_SIZE  256
 
 #define HERMES_IV_LENGTH           16   /* Bytes in IV, should be 16 */
 #define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC, may be 8 or 16 */

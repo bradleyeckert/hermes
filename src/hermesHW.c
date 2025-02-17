@@ -19,5 +19,3 @@ To get real random numbers for the IV, continuously fill an array from the TRNG
 and get the current hash of the array when you need a new 32-byte random number.
 The hash will change to a new unpredictable hash with each new TRNG byte.
 */
-
-
