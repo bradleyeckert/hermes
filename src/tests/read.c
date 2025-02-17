@@ -19,14 +19,6 @@ uint64_t hctr;      // HMAC counter
 FILE* file;         // input file
 uint8_t HMAC[16];   // captured HMAC
 
-void SkipEndTags(void) {
-    int c;
-    do {
-        c = fgetc(file);
-        if (c == EOF) return;
-    } while (c == 0x12);
-}
-
 int NextChar(void) {
     int c = fgetc(file);
     if (c < 0) return c;                        // EOF
@@ -48,7 +40,7 @@ int NextChar(void) {
 int NextBlock(uint8_t *dest) {                  // return bytes read before HMAC
     for (int i = 0; i < 16; i++) {
         int c = NextChar();
-        if (c < 0) return c;
+        if (c == EOF) return c;
         if (c & 0x100) return i;                // HMAC tag
         *dest++ = c;
     }
@@ -62,16 +54,22 @@ int TestHMAC(uint8_t *src) {
 
 void dump(const uint8_t *src, uint8_t len) {
     for (uint8_t i = 0; i < len; i++) {
-        if ((i % 33) == 0) printf("\n___");
+        if ((i % 16) == 0) printf("\n___");
         printf("%02X ", src[i]);
     }
     printf("<- ");
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    char *filename;
+    if (argc > 1) {
+        filename = argv[1];
+    } else {
+        filename = FILENAME;
+    }
     uint8_t IV[17];
     printf("\nReading demofile.bin ");
-    file = fopen(FILENAME, "rb");
+    file = fopen(filename, "rb");
     if (file == NULL) {
         printf("\nError opening file!");
         return 1;
@@ -90,16 +88,16 @@ int main() {
         goto end;
     }
     NextBlock(IV);
-    memcpy(&hctr, IV, 8);                       // initial IV and hctr
-    dump((uint8_t*)&hctr, 8); printf("Initial 64-bit HMAC counter");
     dump(IV, 16); printf("mIV (visible, but used once to encrypt cIV)");
     xc_crypt_init(&cCtx, my_encryption_key, IV);// set up to decrypt cIV
     NextBlock(IV);
     NextChar();                                 // ignore 'avail' field
     NextChar();
     xc_crypt_block(&cCtx, IV, IV, 1);           // mIV --> cIV
+    memcpy(&hctr, IV, 8);                       // initial IV and hctr
     xc_crypt_init(&cCtx, my_encryption_key, IV);
     dump(IV, 16); printf("cIV (private)");
+    dump((uint8_t*)&hctr, 8); printf("Initial 64-bit HMAC counter");
     if (NextBlock(IV)) {
         printf("\nError: Expected 10 04 HMAC trigger");
         goto end;

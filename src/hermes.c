@@ -459,7 +459,7 @@ int hermesFileNew(port_ctx *ctx) {
     ctx->hctrTx = 0;
     SendBoiler(ctx);
     int r = SendIV(ctx, HERMES_TAG_CHALLENGE);
-    ctx->hctrTx = ctx->hctrRx;
+    ctx->hctrTx = ctx->hctrRx + 1;
     hermesFileInit(ctx);
     return r;
 }

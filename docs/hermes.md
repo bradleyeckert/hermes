@@ -84,7 +84,7 @@ Each encrypted message elicits an ACK response. The ACK counters of each port st
 
 Errors are handled by re-transmitting messages that didn't get through, as shown in `test.c`.
 
-## File streaming (proposed)
+## File streaming
 
 The same scheme used for messaging can be used for encrypting files. The port writes to the file with the transmit channel and reads from it with the receive channel.
 
@@ -100,9 +100,8 @@ Closing the file saves any remaining data in the block and writes the HMAC. Herm
 
 For example, a 24-bit stereo CODEC produces 6-byte samples. Five samples pack into 32 bytes, with 2 unused bytes (maybe used as telemetry). Any data not a multiple of 16 bytes long is padded with zeros.
 
-File reading is outside the scope of Hermes. Messages can only be read from the beginning, so the utility of reading them with Hermes would be limited. However, 
+File reading is outside the scope of Hermes. Messages can only be read from the beginning, so the utility of reading them with Hermes would be limited. But, the file reading demo is `test/read.c`. The file is created by `test/test.c`.
 
 ## To do
 
-File read demo
 Key rotation
