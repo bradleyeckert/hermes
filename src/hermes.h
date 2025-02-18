@@ -6,7 +6,7 @@
 #include "siphash/src/siphash.h"
 
 #define HERMES_ALLOC_MEM_UINT32S  380
-#define HERMES_FILE_MESSAGE_SIZE  256
+#define HERMES_FILE_MESSAGE_SIZE    9   /* Log2 of file message block */
 
 #define HERMES_IV_LENGTH           16   /* Bytes in IV, should be 16 */
 #define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC, may be 8 or 16 */
@@ -96,13 +96,13 @@ typedef struct
     uint16_t tBlocks;       // size of rxbuf in blocks
     uint16_t avail;         // max size of message you can send = avail*64 bytes
     uint16_t ridx;          // rxbuf index
-    uint8_t bidx;           // block index (0 to 16)
     uint8_t MACed;          // HMAC triggered
     uint8_t tag;            // received message type
     uint8_t escaped;        // assembling a 2-byte escape sequence
     uint8_t retries;        // count the NACKs
     uint8_t rAck;           // receiver Ack
     uint8_t tAck;           // transmitter Ack
+    uint8_t prevblock;      // previous message block
     // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
@@ -178,7 +178,7 @@ int hermesRAMunused (void);
 
 int hermesFileNew(port_ctx *ctx);
 void hermesFileInit (port_ctx *ctx);
-void hermesFileFinal (port_ctx *ctx);
+void hermesFileFinal (port_ctx *ctx, int pad);
 void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len);
 
 

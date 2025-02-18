@@ -60,6 +60,14 @@ void dump(const uint8_t *src, uint8_t len) {
     printf("<- ");
 }
 
+void SkipEndTag(void) {
+    int c;
+    do {
+        c = fgetc(file);                        // .. .. .. 12 .. ..
+        if (c == EOF) return;                   //             ^-- file pointer
+    } while (c != 0x12);
+}
+
 int main(int argc, char *argv[]) {
     char *filename;
     if (argc > 1) {
@@ -68,18 +76,14 @@ int main(int argc, char *argv[]) {
         filename = FILENAME;
     }
     uint8_t IV[17];
-    printf("\nReading demofile.bin ");
+    printf("\nReading %s ", filename);
     file = fopen(filename, "rb");
     if (file == NULL) {
         printf("\nError opening file!");
         return 1;
     }
-    int c;
-    do {                                        // skip boilerplate
-        c = fgetc(file);
-        if (c == EOF) goto end;
-    } while (c != 0x12);
-    fgetc(file);                                // skip extra `12`
+    SkipEndTag();                               // skip boilerplate
+    SkipEndTag();
     printf("\nBegin CHALLENGE message at 0x%X ", (unsigned int)ftell(file));
     hctr = 0;
     sip_hmac_init(&hCtx, my_signature_key, 16, hctr);
@@ -113,7 +117,7 @@ int main(int argc, char *argv[]) {
         dump(HMAC, 16); printf("actual");
         goto end;
     }
-    fgetc(file);                                // skip extra `12`
+    SkipEndTag();
     printf("\nDecryption stream has been initialized, fp=0x%X ", (unsigned int)ftell(file));
 // Begin RAW PACKET messages
     while(1) {
@@ -145,8 +149,8 @@ int main(int argc, char *argv[]) {
             dump(HMAC, 16); printf("actual");
             goto end;
         }
-        fgetc(file);
-        fgetc(file);
+        SkipEndTag();
+        SkipEndTag();                           // skip padding
     }
 
 

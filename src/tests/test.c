@@ -152,10 +152,10 @@ int main() {
     int tests = 0x7F;   // enable these tests...
 //    snoopy = 1;         // display the wire traffic
     hermesNoPorts();
-    hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 3, 3,
+    hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 1, 1,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput,
                   my_encryption_key, my_signature_key);
-    hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 3, 3,
+    hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 1, 1,
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput,
                   my_encryption_key, my_signature_key);
     printf("Static context RAM usage: %d bytes per port\n", hermesRAMused(2)/2);
@@ -201,7 +201,7 @@ int main() {
         for (int i = 0; i < 100; i++) {
             hermesFileOut(&Alice, (uint8_t*)"ABCDEFGHIJKLMNOP", 16);
         }
-        hermesFileFinal(&Alice);
+        hermesFileFinal(&Alice, 0);
         fclose(file);
     }
     return 0;

@@ -94,7 +94,7 @@ A file should consist of:
 - A challenge to set a random IV
 - Authenticated message(s)
 
-File-like streaming is used for writing. Creating the file writes the boilerplate and challenge. Writing to the file appends a block at a time to the output. Every 4K bytes, the message HMAC is written and a new message is begun. The sequence of messages is serialized. The advantage of the 4K block is that one bad block does not ruin the whole file.
+File-like streaming is used for writing. Creating the file writes the boilerplate and challenge. Writing to the file appends a block at a time to the output. Every `1<<HERMES_FILE_MESSAGE_SIZE` bytes, the message HMAC is written and a new message is begun. The sequence of messages is serialized. Each message aligns with a `1<<HERMES_FILE_MESSAGE_SIZE` block of storage. For example, using `9` for `HERMES_FILE_MESSAGE_SIZE` pads each chunk to 512 bytes. Message overhead is about 28 bytes, so a 512-byte block (the size used for file storage) would use 94.5% of the block for payload data.
 
 Closing the file saves any remaining data in the block and writes the HMAC. Hermes does not impose a length limit on the file, but it does require each message length to be a multiple of 16 bytes. The way to meet this requirement is to write to the file 16 or 32 bytes at a time.
 
