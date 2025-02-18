@@ -5,9 +5,8 @@
 #include "../xchacha/src/xchacha.h"
 #include "../siphash/src/siphash.h"
 
-//                                0123456789abcdef0123456789abcdef
-uint8_t my_encryption_key[32] = {"Do not use this encryption key!"};
-uint8_t my_signature_key[16] =  {"Or this key..."};
+uint8_t my_encryption_key[] = "I refuse to join any club that would have me as a member.";
+#define my_signature_key  (&my_encryption_key[32])
 
 #define FILENAME "C:/Users/Brad/Documents/GitHub/hermes_CodeBlocks/HERMES/bin/Release/demofile.bin"
 
@@ -87,7 +86,7 @@ int main(int argc, char *argv[]) {
     printf("\nBegin CHALLENGE message at 0x%X ", (unsigned int)ftell(file));
     hctr = 0;
     sip_hmac_init(&hCtx, my_signature_key, 16, hctr);
-    if (NextChar() != 23) {
+    if (NextChar() != 0x18) {
         printf("\nError: Couldn't find challenge tag");
         goto end;
     }
@@ -127,7 +126,7 @@ int main(int argc, char *argv[]) {
             printf("\nFINISHED!");
             goto end;
         }
-        if (c != 31) {
+        if (c != 0x1F) {
             printf("\nError: Expected RAW PACKET tag");
             goto end;
         }

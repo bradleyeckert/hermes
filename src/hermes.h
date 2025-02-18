@@ -5,23 +5,26 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_ALLOC_MEM_UINT32S  380
+#define HERMES_ALLOC_MEM_UINT32S  308
 #define HERMES_FILE_MESSAGE_SIZE    9   /* Log2 of file message block */
 
 #define HERMES_IV_LENGTH           16   /* Bytes in IV, should be 16 */
 #define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC, may be 8 or 16 */
 
-// Message tags (mostly 24 to 31)
-#define HERMES_TAG_END             18   /* signal end of message (don't change) */
-#define HERMES_TAG_GET_BOILER      20   /* request boilerplate */
-#define HERMES_TAG_BOILERPLATE     21   /* boilerplate */
-#define HERMES_TAG_RESET           22   /* trigger a 2-way IV init */
-#define HERMES_TAG_CHALLENGE       23   /* signal a 2-way IV init */
-#define HERMES_TAG_RESPONSE        24   /* signal a 1-way IV init */
-#define HERMES_TAG_MESSAGE         25   /* signal an encrypted message */
-#define HERMES_TAG_ACK             26   /* signal an ACK */
-#define HERMES_TAG_NACK            27   /* signal a NACK */
-#define HERMES_TAG_RAWTX           31
+// Message tags
+#define HERMES_TAG_END           0x12   /* signal end of message (don't change) */
+#define HERMES_TAG_GET_BOILER    0x14   /* request boilerplate */
+#define HERMES_TAG_BOILERPLATE   0x15   /* boilerplate */
+#define HERMES_TAG_RESET         0x16   /* trigger a 2-way IV init */
+#define HERMES_TAG_MESSAGE       0x17   /* signal an encrypted message */
+#define HERMES_TAG_CHALLENGE     0x18   /* signal a 2-way IV init */
+#define HERMES_TAG_RESPONSE      0x19   /* signal a 1-way IV init */
+#define HERMES_TAG_ACK           0x1A   /* signal an ACK */
+#define HERMES_TAG_NACK          0x1B   /* signal a NACK */
+#define HERMES_TAG_RAWTX         0x1F
+
+#define HERMES_MSG_NEW_KEY       0xAA
+#define HERMES_MSG_NO_ACK        0xFF
 
 // Error tags
 #define HERMES_ERROR_INVALID_STATE  1   /* FSM reached an invalid state */
@@ -32,6 +35,9 @@
 #define HERMES_ERROR_INVALID_LENGTH 6
 #define HERMES_ERROR_LONG_BOILERPLT 7
 #define HERMES_ERROR_MSG_TRUNCATED  8
+#define HERMES_ERROR_OUT_OF_MEMORY  9
+#define HERMES_ERROR_REKEYED       10
+#define HERMES_ERROR_MSG_NOT_SENT  11
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
@@ -85,8 +91,7 @@ typedef struct
     uint64_t hctrRx;        // HMAC counters
     uint64_t hctrTx;
     const uint8_t *boil;    // boilerplate
-    const uint8_t *ckey;    // encryption/decryption key
-    const uint8_t *hkey;    // HMAC signing key
+    const uint8_t *key;     // encryption/decryption key[32] and HMAC key[16]
     uint8_t hmac[HERMES_HMAC_LENGTH];
     uint8_t *rxbuf;
     uint8_t *txbuf;
@@ -128,11 +133,12 @@ void hermesNoPorts(void);
  * @param ciphr       Handler for char transmission (c)
  * @param enc_key     32-byte encryption key
  * @param hmac_key    16-byte HMAC key
+ * @return    0 if okay, otherwise HERMES_ERROR_?
  */
-void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
+int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, uint16_t txBlocks,
                    hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
-                   const uint8_t *enc_key, const uint8_t *hmac_key);
+                   const uint8_t *key);
 
 
 /** Input raw ciphertext (or command), such as received from a UART
@@ -164,6 +170,13 @@ void hermesBoiler(port_ctx *ctx);
  * Only send data if hermesAvail is not 0.
  */
 int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes);
+
+
+/** Encrypt and send a re-key message, returns key
+ * @param key   48-byte key set
+ * @return      0 if okay, otherwise HERMES_ERROR_?
+ */
+int hermesReKey(port_ctx *ctx, const uint8_t *key);
 
 
 /** Get number of bytes allowed in a message

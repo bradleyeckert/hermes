@@ -68,7 +68,7 @@ static void SendByte(port_ctx *ctx, uint8_t c) {
 
 // Send: Tag[1]
 static void SendHeader(port_ctx *ctx, int tag) {
-    ctx->hInitFn((void *)&*ctx->thCtx, ctx->hkey, HERMES_HMAC_LENGTH, ctx->hctrTx);
+    ctx->hInitFn((void *)&*ctx->thCtx, &ctx->key[32], HERMES_HMAC_LENGTH, ctx->hctrTx);
     SendByte(ctx, tag);                         // Header consists of a TAG byte,
 }
 
@@ -124,7 +124,7 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     }
     DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("New %s.hctrRx",ctx->name);
     DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("Current %s.hctrTx\n",ctx->name);
-    ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->ckey, mIV);
+    ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->key, mIV);
     ctx->cBlockFn((void *)&*ctx->tcCtx, cIV, mIV, 0);
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
         SendByte(ctx, mIV[i]);                  // encrypted cIV[]
@@ -132,7 +132,7 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     SendByte(ctx, ctx->rBlocks) ;               // RX buffer size[2]
     SendByte(ctx, ctx->rBlocks >> 8) ;
     SendTxHash(ctx, 0);                         // HMAC
-    ctx->cInitFn((void *)&*ctx->tcCtx, ctx->ckey, cIV);
+    ctx->cInitFn((void *)&*ctx->tcCtx, ctx->key, cIV);
     ctx->tReady = 1;
     ctx->tAck = 0;
     return 0;
@@ -183,16 +183,15 @@ void hermesNoPorts(void) {
 }
 
 // Add a secure port
-void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
+int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, uint16_t txBlocks,
                    hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
-                   const uint8_t *enc_key, const uint8_t *hmac_key) {
+                   const uint8_t *key) {
     memset(ctx, 0, sizeof(port_ctx));
     ctx->tmFn = plain;                          // plaintext output handler
     ctx->tcFn = ciphr;                          // ciphertext output handler
     ctx->boilFn = boiler;                       // boilerplate output handler
-    ctx->ckey = enc_key;
-    ctx->hkey = hmac_key;
+    ctx->key = key;
     ctx->boil = boilerplate;
     ctx->name = name;
     ctx->rxbuf = Allocate(rxBlocks << BLOCK_SHIFT);
@@ -211,6 +210,8 @@ void hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char
         ctx->cInitFn  = xc_crypt_init_g;
         ctx->cBlockFn = xc_crypt_block_g;
     }
+    if (ALLOC_HEADROOM < 0) return HERMES_ERROR_OUT_OF_MEMORY;
+    return 0;
 }
 
 int hermesRAMused (int ports) {
@@ -261,11 +262,23 @@ int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
     return ResendMessage(ctx) | r;
 }
 
+// Encrypt and send a re-key message, buffering in case of transmission error.
+// ACK is returned if failure.
+int hermesReKey(port_ctx *ctx, const uint8_t *key){
+    if (hermesAvail(ctx) < 64) return HERMES_ERROR_MSG_NOT_SENT;
+    memset(ctx->txbuf, 0, 1 << BLOCK_SHIFT);
+    ctx->txbuf[2] = HERMES_MSG_NEW_KEY;
+    ctx->txbuf[0] = 64;
+    memcpy(&ctx->txbuf[PREAMBLE_SIZE], key, 64);
+    return ResendMessage(ctx);
+}
+
 // -----------------------------------------------------------------------------
 // Receive char or command from input stream
 int hermesPutc(port_ctx *ctx, uint16_t c){
     int r = 0;
     int temp, i, badHMAC;
+    uint8_t *k;
     if (c & 0xFF00) {
         switch (c) {
         case HERMES_CMD_RESET:
@@ -307,7 +320,7 @@ reset:      hermesPair(ctx);
             ctx->rReady = 0;
             ctx->tReady = 0;
         }
-        ctx->hInitFn((void *)&*ctx->rhCtx, ctx->hkey, HERMES_HMAC_LENGTH, ctx->hctrRx);
+        ctx->hInitFn((void *)&*ctx->rhCtx, &ctx->key[32], HERMES_HMAC_LENGTH, ctx->hctrRx);
         ctx->hPutcFn((void *)&*ctx->rhCtx, c);
         ctx->tag = c;
         ctx->MACed = 0;
@@ -341,7 +354,7 @@ reset:      hermesPair(ctx);
         ctx->rxbuf[ctx->ridx++] = c;
         if (ctx->ridx == HERMES_IV_LENGTH) {
             PRINTF("\nSet temporary IV for decrypting the secret IV ");
-            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, ctx->rxbuf);
+            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->key, ctx->rxbuf);
             ctx->state = GET_PAYLOAD;
         }
         break;
@@ -395,7 +408,7 @@ reset:      hermesPair(ctx);
                 r = HERMES_ERROR_INVALID_LENGTH;
                 break;
             }
-            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->ckey, &ctx->rxbuf[HERMES_IV_LENGTH]);
+            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->key, &ctx->rxbuf[HERMES_IV_LENGTH]);
             memcpy(&ctx->hctrTx, &ctx->rxbuf[HERMES_IV_LENGTH], 8);
             memcpy(&ctx->avail, &ctx->rxbuf[2*HERMES_IV_LENGTH], 2);
             ctx->rReady = 1;
@@ -419,12 +432,21 @@ reset:      hermesPair(ctx);
             } else {
                 memcpy (&temp, ctx->rxbuf, 2);  // little-endian msg length
                 c = ctx->rxbuf[2];
-                if (c & 0x80) break;            // no ACK for this message
+                switch (c) {
+                case HERMES_MSG_NO_ACK:
+                    goto noack;
+                case HERMES_MSG_NEW_KEY:
+                    k = UpdateHermesKeySet(&ctx->rxbuf[PREAMBLE_SIZE]);
+                    c = 0;
+                    if (k != NULL) return HERMES_ERROR_REKEYED;
+                    break;
+                default:
+                    ctx->tmFn(&ctx->rxbuf[PREAMBLE_SIZE], temp);
+                }
                 ctx->rAck = c;
-                ctx->tmFn(&ctx->rxbuf[PREAMBLE_SIZE], temp);
                 SendACK(ctx, HERMES_TAG_ACK, (c + 1) & 0x7F);
             }
-            break;
+noack:      break;
         case HERMES_TAG_ACK:
             if (badHMAC) {
                 PRINTF("DROPPED ACK, ");

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "../hermes.h"
+#include "../hermesHW.h"
 
 // -----------------------------------------------------------------------------
 // Some default values for testing
@@ -15,11 +16,11 @@ int snoopy;
 
 // Connect Alice to Bob via a virtual null-modem cable
 
-#define ERROR_PACING 720
-int errorpos = 0;    // inject error every ERROR_PACING byte
+int error_pacing = 720;
+int errorpos = 0;                       // inject error every error_pacing byte
 
 static uint8_t snoop(uint8_t c, char t) {
-    if (!(++errorpos % ERROR_PACING)) {
+    if (!(++errorpos % error_pacing)) {
         c++;
         printf("\n<><><><><><> Error injected <><><><><><> ");
     }
@@ -40,6 +41,8 @@ static char* errorCode(int e) {
     case HERMES_ERROR_INVALID_LENGTH:  return "Invalid packet length";
     case HERMES_ERROR_LONG_BOILERPLT:  return "Boilerplate is too long";
     case HERMES_ERROR_MSG_TRUNCATED:   return "Message was truncated";
+    case HERMES_ERROR_OUT_OF_MEMORY:   return "Insufficient HERMES_ALLOC_MEM_UINT32S";
+    case HERMES_ERROR_REKEYED:         return "Keys were changed";
     default: return "unknown";
     }
 }
@@ -71,9 +74,7 @@ static void BoilerHandlerA(const uint8_t *src, uint32_t length) {
 static void BoilerHandlerB(const uint8_t *src, uint32_t length) {
     printf("\n  Bob received boilerplate {%s}", src);
 }
-//                                0123456789abcdef0123456789abcdef
-uint8_t my_encryption_key[32] = {"Do not use this encryption key!"};
-uint8_t my_signature_key[16] =  {"Or this key..."};
+
 const uint8_t AliceBoiler[] =   {"\x12nyb<Alice's_UUID>0"};
 const uint8_t BobBoiler[] =     {"\x12nyb<Bob's_UUID__>0"};
 
@@ -138,6 +139,15 @@ int SendBob(int msgID) {
     return elements;
 }
 
+void PairAlice(void) {
+    printf("\nAlice is pairing with keys {%s}", Alice.key);
+    hermesPair(&Alice);
+    if (Alice.hctrTx != Bob.hctrRx) printf("\nERROR: Alice cannot send to Bob");
+    if (Bob.hctrTx != Alice.hctrRx) printf("\nERROR: Bob cannot send to Alice");
+    printf("\nAvailability: Alice=%d, Bob=%d",
+           hermesAvail(&Alice), hermesAvail(&Bob));
+}
+
 // File encryption
 
 FILE *file;
@@ -149,29 +159,33 @@ void CharToFile(uint8_t c) {
 }
 
 int main() {
-    int tests = 0x7F;   // enable these tests...
+    int tests = 0xFF;   // enable these tests...
 //    snoopy = 1;         // display the wire traffic
     hermesNoPorts();
+    uint8_t* keys = HermesKeySet();
+    if (!keys) {
+        printf("\nMissing keys");
+        return 10;
+    }
     hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 1, 1,
-                  BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput,
-                  my_encryption_key, my_signature_key);
-    hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 1, 1,
-                  BoilerHandlerB, PlaintextHandler, BobCiphertextOutput,
-                  my_encryption_key, my_signature_key);
+                  BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, keys);
+    int ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 1, 1,
+                  BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, keys);
+    if (ior) {
+        printf("\nError %d: %s, ", ior, errorCode(ior));
+        printf("too small by %d", -hermesRAMunused()/4);
+        return ior;
+    }
     printf("Static context RAM usage: %d bytes per port\n", hermesRAMused(2)/2);
-    printf("context_memory has %d unused bytes\n", hermesRAMunused());
+    printf("context_memory has %d unused bytes (%d unused longs)\n",
+           hermesRAMunused(), hermesRAMunused()/4);
     Alice.hctrTx = 0x3412; // ensure that re-pair resets these
     Alice.hctrRx = 0x341200;
     Bob.hctrTx = 0x785600;
     Bob.hctrRx = 0x7856;
     if (tests & 0x01) hermesBoiler(&Alice);
     if (tests & 0x02) hermesBoiler(&Bob);
-    if (tests & 0x04) {
-        hermesPair(&Alice);
-        if (Alice.hctrTx != Bob.hctrRx) printf("\nERROR: Alice cannot send to Bob");
-        if (Bob.hctrTx != Alice.hctrRx) printf("\nERROR: Bob cannot send to Alice");
-    }
-    printf("\nAvailability: Alice=%d, Bob=%d", hermesAvail(&Alice), hermesAvail(&Bob));
+    if (tests & 0x04) PairAlice();
     int i, j;
     if (tests & 0x08) {
         printf("\n\nAlice ================================");
@@ -187,9 +201,15 @@ int main() {
         i = 0;
         do {j = SendBob(i++);} while (i != j);
     }
+    if (tests & 0x40) {
+        printf("\n\nRe-keying =============================");
+        i = hermesReKey(&Alice, (uint8_t*)"I refuse to join any club that would have me as a member.");
+        if (i) printf("\nError %d: %s, ", i, errorCode(i));
+        PairAlice();
+    }
     printf("\nAlice sent %d bytes", Alice.counter);
     printf("\nBob sent %d bytes", Bob.counter);
-    if (tests & 0x40) { // file interface not working
+    if (tests & 0x80) { // file interface not working
         printf("\n\nTest write to demofile.bin ");
         Alice.tcFn = CharToFile;
         file = fopen("demofile.bin", "wb");

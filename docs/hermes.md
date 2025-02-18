@@ -59,7 +59,7 @@ The only plaintext sent over the port, besides headers, is boilerplate informati
 
 A host PC connected to a target MCU through a UART would keep track of keys for different targets. Depending on security requirements, the host PC can keep those keys on the cloud or in a file in encrypted format.
 
-`hermes` should support key rotation. Given the key address, a function in `hermesHW.c` would write the new key. This specialized function is platform-specific since it writes to Flash.
+`hermes` supports key rotation in `hermesHW.c`. This specialized function is platform-specific since it writes to Flash. Specifics are outside the scope of `hermes`, but keys should have a HMAC signed with a unique (to each device, but permanent) private key. The key set is 64 bytes total: 32 bytes for the encryption key, 16 bytes for the HMAC key, and 16 bytes for the key-set HMAC.
 
 ## Boilerplate messages
 
@@ -101,7 +101,3 @@ Closing the file saves any remaining data in the block and writes the HMAC. Herm
 For example, a 24-bit stereo CODEC produces 6-byte samples. Five samples pack into 32 bytes, with 2 unused bytes (maybe used as telemetry). Any data not a multiple of 16 bytes long is padded with zeros.
 
 File reading is outside the scope of Hermes. Messages can only be read from the beginning, so the utility of reading them with Hermes would be limited. But, the file reading demo is `test/read.c`. The file is created by `test/test.c`.
-
-## To do
-
-Key rotation
