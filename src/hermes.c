@@ -63,6 +63,16 @@ static void SendByte(port_ctx *ctx, uint8_t c) {
     ctx->hPutcFn((void *)&*ctx->thCtx, c);      // add to HMAC
 }
 
+static void SendN(port_ctx *ctx, const uint8_t *src, int length) {
+    for (int i = 0; i < length; i++) {
+        SendByte(ctx, src[i]);
+    }
+}
+
+static void Send16(port_ctx *ctx, const uint8_t *src) {
+    SendN(ctx, src, 16);
+}
+
 #define HDRlength 1 //(HERMES_LENGTH_LENGTH+2)      /* Header length (tag+len+~LSB) */
 #define ivADlength  2                           /* Associated data length */
 
@@ -119,16 +129,20 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     memcpy(&ctx->hctrRx, cIV, 8);
     PRINTF("\n%s sending IV, tag=%d, ", ctx->name, tag);
     SendHeader(ctx, tag);                       // TAG (also resets HMAC)
-    for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
-        SendByte(ctx, mIV[i]);                  // plaintext mIV[]
-    }
+#if (HERMES_IV_LENGTH == 16)
+    Send16(ctx, mIV);
+#else
+    SendN(ctx, mIV, HERMES_IV_LENGTH);
+#endif
     DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("New %s.hctrRx",ctx->name);
     DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("Current %s.hctrTx\n",ctx->name);
     ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->key, mIV);
     ctx->cBlockFn((void *)&*ctx->tcCtx, cIV, mIV, 0);
-    for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
-        SendByte(ctx, mIV[i]);                  // encrypted cIV[]
-    }
+#if (HERMES_IV_LENGTH == 16)
+    Send16(ctx, mIV);
+#else
+    SendN(ctx, mIV, HERMES_IV_LENGTH);
+#endif
     SendByte(ctx, ctx->rBlocks) ;               // RX buffer size[2]
     SendByte(ctx, ctx->rBlocks >> 8) ;
     SendTxHash(ctx, 0);                         // HMAC
@@ -145,7 +159,7 @@ static int SendACK (port_ctx *ctx, int tag, uint8_t c) {
     PRINTF("\nEncrypting ACK/NACK, block counter = %d; ", ctx->tcCtx->blox);
     ctx->cBlockFn((void *)&*ctx->tcCtx, m, m, 0);
     SendHeader(ctx, tag);
-    for (int i = 0; i < 16; i++) SendByte(ctx, m[i]);
+    Send16(ctx, m);
     SendTxHash(ctx, 0);
     return 0;
 }
@@ -167,7 +181,7 @@ static int ResendMessage (port_ctx *ctx) {
     for (int i = 0; i < bytes; i += 16) {       // encrypt blocks
         PRINTF("\nEncrypting MESSAGE, block counter = %d; ", ctx->tcCtx->blox);
         ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->txbuf[i], m, 0);
-        for (int j = 0; j < 16; j++) SendByte(ctx, m[j]);
+        Send16(ctx, m);
     }
     SendTxHash(ctx, 0);
     return 0;
@@ -479,34 +493,33 @@ noack:      break;
 
 void hermesFileInit (port_ctx *ctx) {
     SendHeader(ctx, HERMES_TAG_RAWTX);
+    SendByte(ctx, 0);                           // placeholder for other formats
 }
 
-int hermesFileNew(port_ctx *ctx) {
+int hermesFileNew(port_ctx *ctx) {              // start a new one-way message
     ctx->counter = 0;
     ctx->prevblock = 0;
     ctx->rReady = 0;
     ctx->tReady = 0;
     ctx->hctrTx = 0;
-    SendBoiler(ctx);
-    int r = SendIV(ctx, HERMES_TAG_CHALLENGE);
+    SendBoiler(ctx);                            // include ID information for keying
+    int r = SendIV(ctx, HERMES_TAG_CHALLENGE);  // and an encrypted IV
     ctx->hctrTx = ctx->hctrRx + 1;
-    hermesFileInit(ctx);
+    hermesFileInit(ctx);                        // get ready to write 16-byte blocks
     return r;
 }
 
-void hermesFileFinal (port_ctx *ctx, int pad) {
+void hermesFileFinal (port_ctx *ctx, int pad) { // end the one-way message
     SendTxHash(ctx, pad);
 }
 void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len) {
     while (len > 0) {
         int siz = len;
         if (siz > 15) {siz = 16;}
-        else {memset(ctx->txbuf, 0, 16);}
+        else {memset(ctx->txbuf, 0, 16);}       // pad odd-length message with 0s
         memcpy(ctx->txbuf, src, siz);
         ctx->cBlockFn((void *)&*ctx->tcCtx, ctx->txbuf, ctx->txbuf, 0);
-        for (int i = 0; i < 16; i++) {
-            SendByte(ctx, ctx->txbuf[i]);
-        }
+        Send16(ctx, ctx->txbuf);
         src += 16;
         len -= 16;
     }

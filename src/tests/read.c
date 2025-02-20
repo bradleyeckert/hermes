@@ -130,6 +130,10 @@ int main(int argc, char *argv[]) {
             printf("\nError: Expected RAW PACKET tag");
             goto end;
         }
+        if (NextChar()) {
+            printf("\nError: Expected format 0");
+            goto end;
+        }
         while (1) {
             int n = NextBlock(IV);
             if (n < 0) {
@@ -151,8 +155,6 @@ int main(int argc, char *argv[]) {
         SkipEndTag();
         SkipEndTag();                           // skip padding
     }
-
-
 end:
     fclose(file);
 }
