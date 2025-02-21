@@ -45,13 +45,15 @@ Most of the byte-order dependency comes from using `memcpy` to move data to and 
 
 Key management is outside the scope of `hermes`. Pairing assumes that both ends of the communication channel have the same private keys. A pairing handshake between Alice and Bob proceeds as follows:
 
-- Bob sends a paiting request to Alice
-- Alice sends a random 128-bit IV to Bob
-- Bob sends a random 128-bit IV to Alice
+- Bob sends a pairing request to Alice
+- Alice sends a random 128-bit IV to Bob (challenge)
+- Bob sends a random 128-bit IV to Alice (response)
 
-The IV is sent encrypted using a one-time-use random IV, which is in plaintext, so that it is kept secret. Each communication session starts with a different IV so that the keystream never repeats. The hash key is changed after each message as extra protection against replay attacks.
+The IV is sent encrypted using a one-time-use random IV, which is in plaintext. Each communication session starts with a different IV so that the keystream never repeats. The hash key is changed after each message as extra protection against replay attacks.
 
 After the pairing handshake is finished, `hermesAvail(&Alice)` returns 0 if synchronization has been lost due to data corruption. The connection will have to be re-paired with `hermesPair(&Alice)`.
+
+Communication is ACKed, so it requires a successful IV setup in both directions.
 
 ## Key management
 
@@ -101,3 +103,10 @@ Closing the file saves any remaining data in the block and writes the HMAC. Herm
 For example, a 24-bit stereo CODEC produces 6-byte samples. Five samples pack into 32 bytes, with 2 unused bytes (maybe used as telemetry). Any data not a multiple of 16 bytes long is padded with zeros.
 
 File reading is outside the scope of Hermes. Messages can only be read from the beginning, so the utility of reading them with Hermes would be limited. But, the file reading demo is `test/read.c`. The file is created by `test/test.c`.
+
+## Modern UARTs
+
+The buffer size is affected by the latency of USB-serial conversion. Supposing a 4ms round trip time (host to target to host), you probably want messages to amount to that span of time. At 1 MBPS, a UART can send 400 bytes in 4 ms. You would want 512- or 256-byte buffers.
+
+Rather than rely on handshaking, data can be streamed out of the UART as a file stream. It is authenticated after each block. Such one-way communication doesn't care about USB latency.
+

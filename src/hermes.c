@@ -135,7 +135,8 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     SendN(ctx, mIV, HERMES_IV_LENGTH);
 #endif
     DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("New %s.hctrRx",ctx->name);
-    DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("Current %s.hctrTx\n",ctx->name);
+    DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("Current %s.hctrTx",ctx->name);
+    DUMP((uint8_t*)mIV, HERMES_IV_LENGTH); PRINTF("used by %s to encrypt cIV\n",ctx->name);
     ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->key, mIV);
     ctx->cBlockFn((void *)&*ctx->tcCtx, cIV, mIV, 0);
 #if (HERMES_IV_LENGTH == 16)
@@ -329,7 +330,7 @@ reset:      hermesPair(ctx);
     case IDLE:
         if (c < HERMES_TAG_GET_BOILER) break;   // limit range of valid tags
         if (c > HERMES_TAG_NACK)       break;
-        if (c == HERMES_TAG_CHALLENGE) {
+        if (c == HERMES_TAG_IV_A) {
             ctx->hctrRx = 0;                    // before initializing the hash
             ctx->rReady = 0;
             ctx->tReady = 0;
@@ -353,13 +354,13 @@ reset:      hermesPair(ctx);
         case HERMES_TAG_RESET:
             ctx->hctrTx = 0;
             ctx->state = IDLE;
-            r = SendIV(ctx, HERMES_TAG_CHALLENGE);
+            r = SendIV(ctx, HERMES_TAG_IV_A);
             break;
         case HERMES_TAG_BOILERPLATE:
             ctx->state = GET_BOILER;
             break;
-        case HERMES_TAG_CHALLENGE:
-        case HERMES_TAG_RESPONSE:
+        case HERMES_TAG_IV_A:
+        case HERMES_TAG_IV_B:
             ctx->state = GET_IV;
             break;
         }
@@ -412,10 +413,10 @@ reset:      hermesPair(ctx);
                ctx->name, temp, ctx->tag);
         if (badHMAC) PRINTf("\n**** Bad HMAC ****");
         switch (ctx->tag) {
-        case HERMES_TAG_CHALLENGE:
+        case HERMES_TAG_IV_A:
             ctx->tReady = 0;
             ctx->hctrTx = 0;
-        case HERMES_TAG_RESPONSE:
+        case HERMES_TAG_IV_B:
             ctx->rReady = 0;
             if (badHMAC) break;
             if (temp != (2 * HERMES_IV_LENGTH + ivADlength)) {
@@ -430,8 +431,8 @@ reset:      hermesPair(ctx);
             PRINTF("\nReceived IV, tag=%d; ", ctx->tag);
             DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Received HMAC hctrRx, ");
             DUMP((uint8_t*)&ctx->rxbuf[HERMES_IV_LENGTH], 16); PRINTF("Private cIV, ");
-            if (ctx->tag == HERMES_TAG_CHALLENGE) {
-                r = SendIV(ctx, HERMES_TAG_RESPONSE);
+            if (ctx->tag == HERMES_TAG_IV_A) {
+                r = SendIV(ctx, HERMES_TAG_IV_B);
             }
             break;
         case HERMES_TAG_MESSAGE:
@@ -503,7 +504,7 @@ int hermesFileNew(port_ctx *ctx) {              // start a new one-way message
     ctx->tReady = 0;
     ctx->hctrTx = 0;
     SendBoiler(ctx);                            // include ID information for keying
-    int r = SendIV(ctx, HERMES_TAG_CHALLENGE);  // and an encrypted IV
+    int r = SendIV(ctx, HERMES_TAG_IV_A);       // and an encrypted IV
     ctx->hctrTx = ctx->hctrRx + 1;
     hermesFileInit(ctx);                        // get ready to write 16-byte blocks
     return r;

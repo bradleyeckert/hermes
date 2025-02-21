@@ -17,8 +17,8 @@
 #define HERMES_TAG_BOILERPLATE   0x15   /* boilerplate */
 #define HERMES_TAG_RESET         0x16   /* trigger a 2-way IV init */
 #define HERMES_TAG_MESSAGE       0x17   /* signal an encrypted message */
-#define HERMES_TAG_CHALLENGE     0x18   /* signal a 2-way IV init */
-#define HERMES_TAG_RESPONSE      0x19   /* signal a 1-way IV init */
+#define HERMES_TAG_IV_A          0x18   /* signal a 2-way IV init */
+#define HERMES_TAG_IV_B          0x19   /* signal a 1-way IV init */
 #define HERMES_TAG_ACK           0x1A   /* signal an ACK */
 #define HERMES_TAG_NACK          0x1B   /* signal a NACK */
 #define HERMES_TAG_RAWTX         0x1F
