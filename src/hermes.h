@@ -24,7 +24,10 @@
 #define HERMES_TAG_RAWTX         0x1F
 
 #define HERMES_MSG_NEW_KEY       0xAA
-#define HERMES_MSG_NO_ACK        0xFF
+#define HERMES_LENGTH_UNKNOWN    0x80
+#define HERMES_MSG_NO_ACK        0x81
+#define HERMES_END_UNPADDED         0
+#define HERMES_END_PADDED           1
 
 // Error tags
 #define HERMES_ERROR_INVALID_STATE  1   /* FSM reached an invalid state */
@@ -194,5 +197,7 @@ void hermesFileInit (port_ctx *ctx);
 void hermesFileFinal (port_ctx *ctx, int pad);
 void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len);
 
+int hermesStreamInit(port_ctx *ctx);
+int hermesStreamOut(port_ctx *ctx, const uint8_t *src, int len);
 
 #endif /* __TCSTREAMS_H__ */

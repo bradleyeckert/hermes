@@ -108,5 +108,7 @@ File reading is outside the scope of Hermes. Messages can only be read from the 
 
 The buffer size is affected by the latency of USB-serial conversion. Supposing a 4ms round trip time (host to target to host), you probably want messages to amount to that span of time. At 1 MBPS, a UART can send 400 bytes in 4 ms. You would want 512- or 256-byte buffers.
 
-Rather than rely on handshaking, data can be streamed out of the UART as a file stream. It is authenticated after each block. Such one-way communication doesn't care about USB latency.
+Rather than rely on handshaking, data can be streamed out of the UART as a file stream. It is authenticated after each block. Such one-way communication doesn't care about USB latency or whether there is anything connected to the port.
+
+`printf` is built on the `int _write(int fd, char *buf, int size)` primitive. Since `size` could be anything, but is usually not much, `printf` initializes by sending a boilerplate and nonce. Each `printf` uses a non-acknowledged send. When the number of bytes sent crosses a threshold, the boilerplate and nonce may be re-sent in case the terminal got lost. Each `printf` ( or `hermesStreamOut`) is one AEAD message. If the message is too big for the receive buffer the message will be lost, so make sure the receive buffer is bigger than `printf` will ever need.
 

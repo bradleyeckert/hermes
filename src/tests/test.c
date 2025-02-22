@@ -126,6 +126,18 @@ int SendAlice(int msgID) {
     return elements;
 }
 
+int StreamAlice(int msgID) {
+    int elements = sizeof(AliceMessages) / sizeof(AliceMessages[0]);
+    if (msgID >= elements) msgID = elements - 1;
+    const uint8_t* s = AliceMessages[msgID];
+    if (!hermesAvail(&Alice)) {
+        hermesPair(&Alice);
+    }
+    int ior = hermesStreamOut(&Alice, s, strlen((char*)s));
+    if (ior) printf("\n<<<hermesStreamOut>>> returned error code %d ", ior);
+    return elements;
+}
+
 int SendBob(int msgID) {
     int elements = sizeof(BobMessages) / sizeof(BobMessages[0]);
     if (msgID >= elements) msgID = elements - 1;
@@ -159,7 +171,7 @@ void CharToFile(uint8_t c) {
 }
 
 int main() {
-    int tests = 0xFF;   // enable these tests...
+    int tests = 0x1FF;    // enable these tests...
 //    snoopy = 1;         // display the wire traffic
     hermesNoPorts();
     uint8_t* keys = HermesKeySet();
@@ -202,6 +214,13 @@ int main() {
         do {j = SendBob(i++);} while (i != j);
     }
     if (tests & 0x40) {
+        printf("\n\nAlice-to-Bob, no ACK, no error injection...");
+        error_pacing = 1000000;
+        i = 0;
+        hermesStreamInit(&Alice);
+        do {j = StreamAlice(i++);} while (i != j);
+    }
+    if (tests & 0x80) {
         printf("\n\nRe-keying =============================");
         i = hermesReKey(&Alice, (uint8_t*)"I refuse to join any club that would have me as a member.");
         if (i) printf("\nError %d: %s, ", i, errorCode(i));
@@ -209,7 +228,7 @@ int main() {
     }
     printf("\nAlice sent %d bytes", Alice.counter);
     printf("\nBob sent %d bytes", Bob.counter);
-    if (tests & 0x80) { // file interface not working
+    if (tests & 0x100) {
         printf("\n\nTest write to demofile.bin ");
         Alice.tcFn = CharToFile;
         file = fopen("demofile.bin", "wb");
