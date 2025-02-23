@@ -4,9 +4,11 @@ Cybersecurity for embedded systems has been getting a lot of scrutiny due to suc
 
 `hermes` achieves its small footprint by not trying to copy the SSL/TLS usage model that was made for the Internet. The usage model is closer to that of NFT cards like Mifare DESFire: many cards, few readers. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it. Likewise, one of the devices using Hermes is assumed to have an Internet connection for getting the required keys from a remote server or internal key vault. In other words, `hermes` uses a closed ecosystem.
 
-Manufacturers already operate a closed ecosystem for their products. `hermes` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. There is no need for highly complex encryption schemes that have more ways to go wrong.
+Manufacturers already operate a closed ecosystem for their products. `hermes` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. Pre-shared keys keep things simple.
 
-In particular, the PKE used in SSL/TLS requires a X.509 certificate. An embedded system without Internet access would need a root certificate. A private root certificate can be considered similar to a master key because it acts as the foundational trust element within a private certificate authority (CA), essentially "signing" and validating all other certificates issued within that system, making it the key component for establishing trust within that closed network, just like a master key unlocks multiple doors in a building; its security is crucial as compromising it could compromise the entire trust structure within that private network. The discovery of the root certificate in one device would compromise all devices.
+The PKE used in SSL/TLS requires a X.509 certificate. An embedded system without Internet access would need a root certificate. A private root certificate can be considered similar to a master key because it acts as the foundational trust element within a private certificate authority (CA), essentially "signing" and validating all other certificates issued within that system, making it the key component for establishing trust within that closed network, just like a master key unlocks multiple doors in a building; its security is crucial as compromising it could compromise the entire trust structure within that private network. The discovery of the root certificate in one device would compromise all devices.
+
+The use of a "pinned key" (public key baked into the firmware) would move custody of the master (private) key to the server. If the server can be trusted with a master key, PKE is okay. But then if the system is two devices connected by a UART, a master key is hidden in one of the devices unless it has Internet. In that case, key management still falls onto a host so `hermes` does not implement PKE. 
 
 Without PKE, there is no spoofing. Key management relies on key escrow instead. Anti-spoofing relies on he security of the escrow.
 
@@ -40,6 +42,8 @@ Most of the byte-order dependency comes from using `memcpy` to move data to and 
 * 32-bit CPU such as ARM or RISC-V
 * On-chip Flash memory for code and keys
 * UART
+
+The true random number generator is used to generate unique IVs. This uniqueness could be generated in other ways, but a TRNG reduces the chance of IV re-use. If an IV were to be reused, it would have to be used many times to be useful to an attacker. Key generation (outside the scope of `hermes`) needs a good TRNG. IVs, not so much.
 
 ## Pairing
 
@@ -110,5 +114,5 @@ The buffer size is affected by the latency of USB-serial conversion. Supposing a
 
 Rather than rely on handshaking, data can be streamed out of the UART as a file stream. It is authenticated after each block. Such one-way communication doesn't care about USB latency or whether there is anything connected to the port.
 
-`printf` is built on the `int _write(int fd, char *buf, int size)` primitive. Since `size` could be anything, but is usually not much, `printf` initializes by sending a boilerplate and nonce. Each `printf` uses a non-acknowledged send. When the number of bytes sent crosses a threshold, the boilerplate and nonce may be re-sent in case the terminal got lost. Each `printf` ( or `hermesStreamOut`) is one AEAD message. If the message is too big for the receive buffer the message will be lost, so make sure the receive buffer is bigger than `printf` will ever need.
+In the WCH platform, `printf` is built on the `int _write(int fd, char *buf, int size)` primitive. Since `size` could be anything, but is usually not much, `printf` initializes by sending a boilerplate and nonce. Each `printf` uses a non-acknowledged send. When the number of bytes sent crosses a threshold, the boilerplate and nonce may be re-sent in case the terminal got lost. Each `printf` ( or `hermesStreamOut`) is one AEAD message. If the message is too big for the receive buffer the message will be lost, so make sure the receive buffer is bigger than `printf` will ever need.
 
