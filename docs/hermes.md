@@ -30,6 +30,10 @@ Cryptographic functions are called through function pointers held in the port's 
 
 The keyed hash includes a 64-bit counter that gets incremented after each hash, which rules out replay attacks.
 
+## Escape sequences
+
+`hermes` uses escape sequences to reserve characters for framing messages in UART streams. The most common ending on terminal input is a newline, `\n`, or 0x0A. The binary stream has its `\n` translated to 0x0B 0x00 when sent across a wire, reserving `\n` for the actual end-of-message.
+
 ## Language dependencies
 
 * C99
@@ -71,7 +75,7 @@ A host PC connected to a target MCU through a UART would keep track of keys for 
 
 ## Boilerplate messages
 
-Boilerplate messages are plaintext, so they do not get a hash. The allowed length of a boilerplate is up to 128 bytes, the minimum receive buffer size. Boilerplate responses longer than 128-byte are truncated, so the receiver will wait for a `12`.
+Boilerplate messages are plaintext, so they do not get a hash. The allowed length of a boilerplate is up to 128 bytes, the minimum receive buffer size. Boilerplate responses longer than 128-byte are truncated, so the receiver will wait for an end-of-message token.
 
 The boilerplate contains a UUID. For example, the CH32V20x and CH32V30x MCUs contain a 96-bit ESIG. To use the ESIG in the boilerplate, `memcpy` would move 12 bytes from address `0x1FFFF7E8` to a RAM buffer used by the boilerplate. Other boilerplate items include the AEAD protocol used (0 means XChaCha20-SipHash) and HMAC length (8 or 16 bytes). The default data structure for `hermes` is:
 

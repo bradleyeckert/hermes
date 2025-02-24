@@ -12,7 +12,9 @@
 #define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC, may be 8 or 16 */
 
 // Message tags
-#define HERMES_TAG_END           0x12   /* signal end of message (don't change) */
+#define HERMES_TAG_END           0x0A   /* signal end of message (don't change) */
+#define HERMES_ESCAPE            0x0B
+#define HERMES_HMAC_TRIGGER      0x02
 #define HERMES_TAG_GET_BOILER    0x14   /* request boilerplate */
 #define HERMES_TAG_BOILERPLATE   0x15   /* boilerplate */
 #define HERMES_TAG_RESET         0x16   /* trigger a 2-way IV init */

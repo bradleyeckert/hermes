@@ -48,9 +48,9 @@ static void * Allocate(int bytes) {
 }
 
 static void SendByteU(port_ctx *ctx, uint8_t c) {
-    if ((c & 0xFC) == 0x10) {                   // special 10h to 13h byte?
-        ctx->tcFn(0x10);
-        ctx->tcFn(c & 3);
+    if ((c & 0xFE) == HERMES_TAG_END) {         // HERMES_TAG_END or HERMES_ESCAPE
+        ctx->tcFn(HERMES_ESCAPE);
+        ctx->tcFn(c & 1);
         ctx->counter++;
     } else {
         ctx->tcFn(c);
@@ -106,8 +106,8 @@ static void SendTxHash(port_ctx *ctx, int pad){ // finish authenticated packet
     uint8_t hash[HERMES_HMAC_LENGTH];
     ctx->hFinalFn((void *)&*ctx->thCtx, hash);
     ctx->hctrTx++;
-    ctx->tcFn(0x10);                            // HMAC marker
-    ctx->tcFn(0x04);
+    ctx->tcFn(HERMES_ESCAPE);                   // HMAC marker
+    ctx->tcFn(HERMES_HMAC_TRIGGER);
     for (int i = 0; i < HERMES_HMAC_LENGTH; i++) SendByteU(ctx, hash[i]);
     ctx->tcFn(HERMES_TAG_END);
     ctx->counter += 3;
@@ -314,8 +314,8 @@ reset:      hermesPair(ctx);
     int ended = (c == HERMES_TAG_END);          // distinguish '12' from '10 02'
     if (ctx->escaped) {
         ctx->escaped = 0;
-        if (c > 3) switch(c) {
-            case 4:                             // 10h 04h triggers HMAC capture
+        if (c > 1) switch(c) {
+            case HERMES_HMAC_TRIGGER:
                 DUMP((uint8_t*)&ctx->hctrRx, 8);
                 PRINTF("%s receiving HMAC with hctrRx, ", ctx->name);
                 ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
@@ -324,10 +324,10 @@ reset:      hermesPair(ctx);
                 return 0;
             default: goto reset;
         } else {
-        c += 0x10;                              // 10h 02h -> 12h
+        c += HERMES_TAG_END;
         }
     }
-    else if (c == 0x10) {
+    else if (c == HERMES_ESCAPE) {
         ctx->escaped = 1;
         return 0;
     }

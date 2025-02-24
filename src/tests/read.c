@@ -21,16 +21,16 @@ uint8_t HMAC[16];   // captured HMAC
 int NextChar(void) {
     int c = fgetc(file);
     if (c < 0) return c;                        // EOF
-    if (c == 0x10) {
+    if (c == 0x0B) {
         c = fgetc(file);
-        if (c > 3) switch(c) {
-        case 4:
+        if (c > 1) switch(c) {
+        case 2:
             sip_hmac_final(&hCtx, HMAC);
             hctr++;
             return 0x100;
         default:
             printf("\nUnknown 10 ??");
-        } else c += 0x10;
+        } else c += 0x0A;
     }
     sip_hmac_putc(&hCtx, c);
     return c;
@@ -64,7 +64,7 @@ void SkipEndTag(void) {
     do {
         c = fgetc(file);                        // .. .. .. 12 .. ..
         if (c == EOF) return;                   //             ^-- file pointer
-    } while (c != 0x12);
+    } while (c != 0x0A);
 }
 
 int main(int argc, char *argv[]) {
@@ -106,7 +106,7 @@ int main(int argc, char *argv[]) {
         goto end;
     }
     NextBlock(IV);                              // expected HMAC
-    if (NextChar() != 0x12) {
+    if (NextChar() != 0x0A) {
         printf("\nError: Expected END tag");
         goto end;
     }
