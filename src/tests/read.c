@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
             goto end;
         }
         if (NextChar() != 0x80) {
-            printf("\nError: Expected format 0");
+            printf("\nError: Expected format 0x80 (unknown length)");
             goto end;
         }
         while (1) {

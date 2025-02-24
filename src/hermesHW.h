@@ -9,7 +9,7 @@
 int getc_TRNG(void);
 
 /** Write a new set of keys
- * @param  48-byte key set
+ * @param  64-byte key set
  * @return Address of new set of keys, NULL if could not update
  */
 uint8_t * UpdateHermesKeySet(uint8_t* keyset);
