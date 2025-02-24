@@ -2,9 +2,9 @@
 
 Cybersecurity for embedded systems has been getting a lot of scrutiny due to such systems being exploited in spectacular Bond-villain-level cyber attacks. Encrypted UARTs are now a thing, possibly turning into a mandated thing down the road. Already in some markets, encryption is mandated for data crossing enclosure boundaries. `hermes` encrypts UART traffic using a small memory footprint. While it uses xchacha20-siphash for AEAD by default, other encryption and HMAC schemes are easily added (AES-SHA, SH4-SH3, etc).
 
-`hermes` achieves its small footprint by not trying to copy the SSL/TLS usage model that was made for the Internet. The usage model is closer to that of NFT cards like Mifare DESFire: many cards, few readers. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it. Likewise, one of the devices using Hermes is assumed to have an Internet connection for getting the required keys from a remote server or internal key vault. In other words, `hermes` uses a closed ecosystem.
+`hermes` achieves its small footprint by not trying to copy the SSL/TLS usage model that was made for the Internet. The usage model is closer to that of NFT cards like Mifare DESFire: many cards, few readers. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it. Likewise, one of the devices using Hermes is assumed to have an Internet connection for getting the required keys from a remote server or key vault. In other words, `hermes` uses a closed ecosystem.
 
-Manufacturers already operate a closed ecosystem for their products. `hermes` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. Pre-shared keys keep things simple.
+Manufacturers already operate a closed ecosystem for their products. `hermes` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. Pre-shared keys avoid PKE.
 
 The PKE used in SSL/TLS requires a X.509 certificate. An embedded system without Internet access would need a root certificate. A private root certificate can be considered similar to a master key because it acts as the foundational trust element within a private certificate authority (CA), essentially "signing" and validating all other certificates issued within that system, making it the key component for establishing trust within that closed network, just like a master key unlocks multiple doors in a building; its security is crucial as compromising it could compromise the entire trust structure within that private network. The discovery of the root certificate in one device would compromise all devices.
 
@@ -28,6 +28,8 @@ Cryptographic functions are called through function pointers held in the port's 
 - 128-bit Encryption IV
 - 128-bit HMAC hash
 
+The keyed hash includes a 64-bit counter that gets incremented after each hash, which rules out replay attacks.
+
 ## Language dependencies
 
 * C99
@@ -43,15 +45,15 @@ Most of the byte-order dependency comes from using `memcpy` to move data to and 
 * On-chip Flash memory for code and keys
 * UART
 
-The true random number generator is used to generate unique IVs. This uniqueness could be generated in other ways, but a TRNG reduces the chance of IV re-use. If an IV were to be reused, it would have to be used many times to be useful to an attacker. Key generation (outside the scope of `hermes`) needs a good TRNG. IVs, not so much.
+The true random number generator is used to generate unique IVs, not keys, so the quality of its entropy is not critical. The idea is to avoid IV reuse. A reused IV is unlikely to be useful to an attacker since they would need the previous keystream, only obtainable from the plaintext (which they wouldn't have).
 
 ## Pairing
 
 Key management is outside the scope of `hermes`. Pairing assumes that both ends of the communication channel have the same private keys. A pairing handshake between Alice and Bob proceeds as follows:
 
 - Bob sends a pairing request to Alice
-- Alice sends a random 128-bit IV to Bob (challenge)
-- Bob sends a random 128-bit IV to Alice (response)
+- Alice sends a random 128-bit IV to Bob
+- Bob sends a random 128-bit IV to Alice
 
 The IV is sent encrypted using a one-time-use random IV, which is in plaintext. Each communication session starts with a different IV so that the keystream never repeats. The hash key is changed after each message as extra protection against replay attacks.
 
@@ -61,15 +63,15 @@ Communication is ACKed, so it requires a successful IV setup in both directions.
 
 ## Key management
 
-The only plaintext sent over the port, besides headers, is boilerplate information that should be used to supply a UUID. A key vault would use the UUID to look up the key. `hermesBoiler(&Alice)` triggers a boilerplate response from Bob. The response is sent to a handler function that will use it to look up the keys.
+The only plaintext sent over the port, besides message tags, is boilerplate information that should be used to supply a UUID. A key vault would use the UUID to look up the key. `hermesBoiler(&Alice)` triggers a boilerplate response from Bob. The response is sent to a handler function that will use it to look up the keys.
 
 A host PC connected to a target MCU through a UART would keep track of keys for different targets. Depending on security requirements, the host PC can keep those keys on the cloud or in a file in encrypted format.
 
-`hermes` supports key rotation in `hermesHW.c`. This specialized function is platform-specific since it writes to Flash. Specifics are outside the scope of `hermes`, but keys should have a HMAC signed with a unique (to each device, but permanent) private key. The key set is 64 bytes total: 32 bytes for the encryption key, 16 bytes for the HMAC key, and 16 bytes for the key-set HMAC.
+`hermes` supports key rotation in `hermesHW.c`. This specialized function is platform-specific since it writes to Flash. Specifics are outside the scope of `hermes`, but keys should have a HMAC signed with a unique (to each device, but permanent) private key. The key set is 64 bytes total: 32 bytes for the encryption key, 16 bytes for the HMAC key, and 16 bytes for the key-set (optional) HMAC.
 
 ## Boilerplate messages
 
-Boilerplate messages are plaintext, so they do not get a hash. The Boilerplate Query is `18-04-00-FB-12`, which triggers a Boilerplate Response. The allowed length of a boilerplate is up to 64 bytes, the minimum receive buffer size. Boilerplate responses longer than 64-byte are truncated, so the receiver will wait for a `12`.
+Boilerplate messages are plaintext, so they do not get a hash. The allowed length of a boilerplate is up to 128 bytes, the minimum receive buffer size. Boilerplate responses longer than 128-byte are truncated, so the receiver will wait for a `12`.
 
 The boilerplate contains a UUID. For example, the CH32V20x and CH32V30x MCUs contain a 96-bit ESIG. To use the ESIG in the boilerplate, `memcpy` would move 12 bytes from address `0x1FFFF7E8` to a RAM buffer used by the boilerplate. Other boilerplate items include the AEAD protocol used (0 means XChaCha20-SipHash) and HMAC length (8 or 16 bytes). The default data structure for `hermes` is:
 

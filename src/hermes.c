@@ -381,7 +381,7 @@ reset:      hermesPair(ctx);
         }
         break;
     case GET_BOILER:
-        if (ctx->ridx == 64) {
+        if (ctx->ridx == (1 << BLOCK_SHIFT)) {
             r = HERMES_ERROR_LONG_BOILERPLT;
             ended = 1;
         }

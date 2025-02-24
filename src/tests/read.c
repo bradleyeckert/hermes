@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
             printf("\nError: Expected RAW PACKET tag");
             goto end;
         }
-        if (NextChar()) {
+        if (NextChar() != 0x80) {
             printf("\nError: Expected format 0");
             goto end;
         }
