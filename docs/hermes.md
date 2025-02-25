@@ -34,6 +34,8 @@ The keyed hash includes a 64-bit counter that gets incremented after each hash, 
 
 `hermes` uses escape sequences to reserve characters for framing messages in UART streams. The most common ending on terminal input is a newline, `\n`, or 0x0A. The binary stream has its `\n` translated to 0x0B 0x00 when sent across a wire, reserving `\n` for the actual end-of-message.
 
+`hermes` messages begin with a character less than blank (<0x20) and end with `\n` (0x0A). Cooked terminal input can be directed elsewhere because it begins with (>0x1F). The underlying UART interface can buffer input until `\n` before sending it on.
+
 ## Language dependencies
 
 * C99

@@ -34,7 +34,7 @@ uint8_t * UpdateHermesKeySet(uint8_t* keyset) {
 	return my_keys;
 }
 /*
-Return the key, NULL if missing
+Return the keys, NULL if missing. 48 bytes are used.
 */
 uint8_t * HermesKeySet(void) {
 	return my_keys;
