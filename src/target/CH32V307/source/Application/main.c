@@ -27,6 +27,22 @@
 
 #include "debug.h"
 
+// UART communication depends on the non-blocked thread for output and interrupts
+// for input. When the ISR detects a '\n' characters, it sets a "finished" flag
+// and the main thread will handle it. The ISR ignores characters if RxBuffer is
+// full, so either use hard flow control or oversize the RxBuffer.
+
+
+#define RXBUFSIZE 256;
+#define TXBUFSIZE 256;
+
+uint8_t RxBuffer1[RXBUFSIZE];
+uint8_t TxBuffer1[TXBUFSIZE];
+
+uint8_t RxTail = 0, TxHead = 0;
+volatile uint8_t RxHead = 0, TxTail = 0;
+
+
 /* Global define */
 #define TxSize1    (size(TxBuffer1))
 #define TxSize2    (size(TxBuffer2))
@@ -157,7 +173,8 @@ int main(void)
     Delay_Init();
     USART_Printf_Init(115200);	
     printf("SystemClk:%d\r\n", SystemCoreClock);
-    printf( "ChipID:%08x\r\n", DBGMCU_GetCHIPID() );
+    printf("ChipID:%08x\r\n", DBGMCU_GetCHIPID());
+    printf("printf uses UART%d\r\n", DEBUG);
     printf("USART Interrupt TEST\r\n");
     USARTx_CFG(); /* USART2 & USART3 INIT */
 

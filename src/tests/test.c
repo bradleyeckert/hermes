@@ -43,6 +43,7 @@ static char* errorCode(int e) {
     case HERMES_ERROR_MSG_TRUNCATED:   return "Message was truncated";
     case HERMES_ERROR_OUT_OF_MEMORY:   return "Insufficient HERMES_ALLOC_MEM_UINT32S";
     case HERMES_ERROR_REKEYED:         return "Keys were changed";
+    case HERMES_ERROR_BUF_TOO_SMALL:   return "Buffer blocks must be at least 2";
     default: return "unknown";
     }
 }
@@ -59,20 +60,23 @@ static void BobCiphertextOutput(uint8_t c) {
     if (r) printf("\n*** Alice returned %d: %s, ", r, errorCode(r));
 }
 
-// Received-plaintest functions
-
-static void PlaintextHandler(const uint8_t *src, uint32_t length) {
+/*
+Received-plaintest functions
+Boilerplate is counted two places: In the first byte and the length parameter.
+They should match, so compare to rule out errors.
+*/
+static void PlaintextHandler(const uint8_t *src, unsigned int length) {
     printf("\nPlaintext {");
     while (length--) putc(*src++, stdout);
     printf("} ");
 }
 
-static void BoilerHandlerA(const uint8_t *src, uint32_t length) {
-    printf("\nAlice received boilerplate {%s}", src);
+static void BoilerHandlerA(const uint8_t *src, unsigned int length) {
+    printf("\nAlice received %d-byte boilerplate {%s}", src[0], &src[1]);
 }
 
-static void BoilerHandlerB(const uint8_t *src, uint32_t length) {
-    printf("\n  Bob received boilerplate {%s}", src);
+static void BoilerHandlerB(const uint8_t *src, unsigned int length) {
+    printf("\n  Bob received %d-byte boilerplate {%s}", src[0], &src[1]);
 }
 
 const uint8_t AliceBoiler[] =   {"\x12nyb<Alice's_UUID>0"};
@@ -179,9 +183,9 @@ int main() {
         printf("\nMissing keys");
         return 10;
     }
-    hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 1, 1,
+    hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, 2,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, keys);
-    int ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 1, 1,
+    int ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, 2,
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, keys);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));

@@ -77,7 +77,7 @@ A host PC connected to a target MCU through a UART would keep track of keys for 
 
 ## Boilerplate messages
 
-Boilerplate messages are plaintext, so they do not get a hash. The allowed length of a boilerplate is up to 128 bytes, the minimum receive buffer size. Boilerplate responses longer than 128-byte are truncated, so the receiver will wait for an end-of-message token.
+Boilerplate messages are plaintext, so they do not get a hash. The allowed length of a boilerplate is up to the minimum receive buffer size. Boilerplate responses longer than that are truncated, so the receiver will wait for an end-of-message token.
 
 The boilerplate contains a UUID. For example, the CH32V20x and CH32V30x MCUs contain a 96-bit ESIG. To use the ESIG in the boilerplate, `memcpy` would move 12 bytes from address `0x1FFFF7E8` to a RAM buffer used by the boilerplate. Other boilerplate items include the AEAD protocol used (0 means XChaCha20-SipHash) and HMAC length (8 or 16 bytes). The default data structure for `hermes` is:
 
@@ -85,12 +85,15 @@ The boilerplate contains a UUID. For example, the CH32V20x and CH32V30x MCUs con
 - 3-byte "nyb" string (nyb = None of your business)
 - 13-byte UUID
 - 1-byte AEAD format identifier
+- Optional CRC
 
 The AEAD format identifier packs bitfields as follows:
 
 - b2:b0 = AEAD protocol. 0 = XChaCha20-SipHash.
 - b6:b3 = reserved, default is 0110.
 - b7 = HMAC length. 0 = 16-byte, 1 = 8-byte. Default is 0.
+
+A received boilerplate is sent to a handler function with src and length parameters. It is a counted string that is zero-terminated so there are multiple ways to get the length. The length should match the count.
 
 ## Acknowledge handshake
 

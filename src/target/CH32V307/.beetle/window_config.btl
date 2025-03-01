@@ -8,11 +8,14 @@
             ]
         ]
     },
-    "WINDOW-SIZE": "MAXIMIZED",
+    "WINDOW-SIZE": [
+        1129,
+        729
+    ],
     "SCREEN-INDEX": 0,
     "X-Y-OFFSET": [
-        0,
-        -7
+        1418,
+        32
     ],
     "BOXES": {
         "0": {
@@ -28,9 +31,9 @@
                                     "class": "Editor",
                                     "tab-index": 1,
                                     "data": {
-                                        "line": 230,
-                                        "index": 0,
-                                        "first-visible-line": 0,
+                                        "line": 176,
+                                        "index": 44,
+                                        "first-visible-line": 138,
                                         "x-view-offset": 0
                                     }
                                 },
@@ -38,18 +41,48 @@
                                     "class": "Editor",
                                     "tab-index": 2,
                                     "data": {
-                                        "line": 143,
-                                        "index": 0,
-                                        "first-visible-line": 126,
+                                        "line": 217,
+                                        "index": 45,
+                                        "first-visible-line": 168,
                                         "x-view-offset": 0
                                     }
                                 },
-                                "CURRENT-INDEX": 2
+                                "rel://source/Startup/startup_ch32v30x_D8C.S": {
+                                    "class": "Editor",
+                                    "tab-index": 3,
+                                    "data": {
+                                        "line": 342,
+                                        "index": 15,
+                                        "first-visible-line": 294,
+                                        "x-view-offset": 0
+                                    }
+                                },
+                                "rel://source/Peripheral/inc/ch32v30x_pwr.h": {
+                                    "class": "Editor",
+                                    "tab-index": 4,
+                                    "data": {
+                                        "line": 77,
+                                        "index": 0,
+                                        "first-visible-line": 0,
+                                        "x-view-offset": 0
+                                    }
+                                },
+                                "rel://source/Core/core_riscv.h": {
+                                    "class": "Editor",
+                                    "tab-index": 5,
+                                    "data": {
+                                        "line": 597,
+                                        "index": 0,
+                                        "first-visible-line": 0,
+                                        "x-view-offset": 0
+                                    }
+                                },
+                                "CURRENT-INDEX": 0
                             }
                         }
                     },
                     "SIZES": [
-                        1258
+                        618
                     ]
                 },
                 "1": {
@@ -74,8 +107,8 @@
                                 }
                             },
                             "SIZES": [
-                                582,
-                                572
+                                256,
+                                251
                             ]
                         },
                         "1": {
@@ -98,20 +131,20 @@
                                 }
                             },
                             "SIZES": [
-                                564,
-                                590
+                                248,
+                                259
                             ]
                         }
                     },
                     "SIZES": [
-                        815,
-                        441
+                        400,
+                        216
                     ]
                 }
             },
             "SIZES": [
-                1402,
-                1156
+                618,
+                509
             ]
         }
     }

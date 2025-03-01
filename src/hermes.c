@@ -33,7 +33,7 @@ void DUMP(const uint8_t *src, uint8_t len) {}
 #define PRINTf PRINTF
 #endif
 
-#define BLOCK_SHIFT 7
+#define BLOCK_SHIFT 6
 
 // -----------------------------------------------------------------------------
 // Hermes
@@ -78,7 +78,6 @@ static void Send16(port_ctx *ctx, const uint8_t *src) {
     SendN(ctx, src, 16);
 }
 
-#define HDRlength 1 //(HERMES_LENGTH_LENGTH+2)      /* Header length (tag+len+~LSB) */
 #define ivADlength  2                           /* Associated data length */
 
 // Send: Tag[1]
@@ -96,7 +95,7 @@ static void SendEnd(port_ctx *ctx) {            // send END tag
 static void SendBoiler(port_ctx *ctx) {         // send boilerplate packet
     uint8_t len = ctx->boil[0];
     SendHeader(ctx, HERMES_TAG_BOILERPLATE);
-    for (int i = 1; i <= len; i++) SendByteU(ctx, ctx->boil[i]);
+    for (int i = 0; i <= len; i++) SendByteU(ctx, ctx->boil[i]);
     SendByteU(ctx, 0);                          // zero-terminate to stringify
     SendEnd(ctx);
 }
@@ -172,6 +171,7 @@ static int SendACK (port_ctx *ctx, int tag, uint8_t c) {
 
 #define PREAMBLE_SIZE 3
 #define MAX_TX_LENGTH ((ctx->tBlocks << BLOCK_SHIFT) - PREAMBLE_SIZE)
+#define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE))
 
 // Encrypt and send a message
 static int ResendMessage (port_ctx *ctx) {
@@ -215,9 +215,10 @@ int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char*
     ctx->boil = boilerplate;                    // counted string
     ctx->name = name;                           // Zstring name for debugging
     ctx->rxbuf = Allocate(rxBlocks << BLOCK_SHIFT);
-    ctx->rBlocks = rxBlocks;                    // buffer size (1<<BLOCK_SHIFT) bytes
+    ctx->rBlocks = rxBlocks;                    // block size (1<<BLOCK_SHIFT) bytes
     ctx->txbuf = Allocate(txBlocks << BLOCK_SHIFT);
     ctx->tBlocks = txBlocks;
+    if ((rxBlocks < 2) || (txBlocks < 2)) return HERMES_ERROR_BUF_TOO_SMALL;
     switch (protocol) {
     default: // 0
         ctx->rcCtx = Allocate(sizeof(xChaCha_ctx));
@@ -286,9 +287,9 @@ int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
 // ACK is returned if failure.
 int hermesReKey(port_ctx *ctx, const uint8_t *key){
     if (hermesAvail(ctx) < 64) return HERMES_ERROR_MSG_NOT_SENT;
-    memset(ctx->txbuf, 0, 1 << BLOCK_SHIFT);
     ctx->txbuf[0] = HERMES_MSG_NEW_KEY;
     ctx->txbuf[1] = 64;
+    ctx->txbuf[2] = 0;
     memcpy(&ctx->txbuf[PREAMBLE_SIZE], key, 64);
     return ResendMessage(ctx);
 }
@@ -371,6 +372,8 @@ reset:      hermesPair(ctx);
             ctx->state = GET_IV;
             break;
         }
+    case HANG:                                  // wait for end token
+noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         break;
     case GET_IV:
         ctx->rxbuf[ctx->ridx++] = c;
@@ -379,37 +382,37 @@ reset:      hermesPair(ctx);
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->key, ctx->rxbuf);
             ctx->state = GET_PAYLOAD;
         }
-        break;
+        goto noend;
     case GET_BOILER:
-        if (ctx->ridx == (1 << BLOCK_SHIFT)) {
+        if (ctx->ridx == MAX_RX_LENGTH) {
             r = HERMES_ERROR_LONG_BOILERPLT;
             ended = 1;
         }
         if (ended) {
             ctx->boilFn(ctx->rxbuf, ctx->ridx);
-            ctx->state = IDLE;
         } else {
             ctx->rxbuf[ctx->ridx++] = c;
         }
-        break;
+        goto noend;
     case GET_PAYLOAD:
-        if (!ended) {
-            ctx->rxbuf[ctx->ridx++] = c;
-            if (ctx->ridx == (ctx->rBlocks << BLOCK_SHIFT)) {
-                ctx->state = AUTHENTICATE;
-            }
-            temp = ctx->ridx;
-            if (!ctx->MACed && !(temp & 15)) {
-                temp -= 16; // -> beginning of block
-                PRINTF("\n%s decrypting payload rxbuf[%d]; ", ctx->name, temp);
-                ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[temp], &ctx->rxbuf[temp], 1);
+        if (!ended) {                           // input terminated by end token
+            if (ctx->ridx != (ctx->rBlocks << BLOCK_SHIFT)) {
+                ctx->rxbuf[ctx->ridx++] = c;
+                temp = ctx->ridx;
+                if (!ctx->MACed && !(temp & 15)) {
+                    temp -= 16;                 // -> beginning of block
+                    PRINTF("\n%s decrypting payload rxbuf[%d]; ", ctx->name, temp);
+                    ctx->cBlockFn((void *)&*ctx->rcCtx, &ctx->rxbuf[temp], &ctx->rxbuf[temp], 1);
+                }
+            } else {
+                ctx->state = HANG;
+                r = HERMES_ERROR_INVALID_LENGTH;
             }
             break;
         }
-    case AUTHENTICATE:
         ctx->state = IDLE;
         temp = ctx->ridx - HERMES_HMAC_LENGTH;
-        badHMAC = 0;
+        badHMAC = 0;                            // test the digital signature
         for (i = 0; i < HERMES_HMAC_LENGTH; i++) {
             if (ctx->hmac[i] != ctx->rxbuf[i+temp]) {
                 r = HERMES_ERROR_BAD_HMAC;
@@ -458,7 +461,7 @@ reset:      hermesPair(ctx);
                 }
             } else {
                 memcpy (&temp, &ctx->rxbuf[1], 2);  // little-endian msg length
-                if (temp & -128) temp = 128; // limit in case of error ***
+                if (temp > MAX_RX_LENGTH) temp = MAX_RX_LENGTH; // limit in case of error ***
                 switch (c) {
                 case HERMES_MSG_NO_ACK:
                     break;
@@ -554,9 +557,9 @@ void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len) {
     }
 }
 
-// Arbitrary length output is similar to file output.
+// Arbitrary length message streaming is similar to file output.
 // Do not guarantee delivery, just send and forget. This scheme assumes a host PC
-// with a large rxbuf, so it will get the data.
+// with a large rxbuf, so it will get the data. Otherwise, the HMAC is dropped.
 
 int hermesStreamInit(port_ctx *ctx) {
     return NewStream(ctx);

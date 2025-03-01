@@ -8,3 +8,5 @@ The original WCH sources provide three startup assembly files:
 - startup_ch32v30x_D8C.S
 
 The application folder contains main.c, which implements the UART interface.
+
+Embeetle projects are self-contained. Before pushing updates to the repo, run a "clean" (the broom button) and delete the `.beetle/.cache` file if it is kind of big.

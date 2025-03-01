@@ -1,29 +1,4 @@
     Trying to connect ... (timeout = 20s)
-Traceback (most recent call last):
-  File "C:\Users\krist\embeetle_dist\windows\embeetle\copied_embeetle\settings\settings.py", line 214, in create_settings_file
-PermissionError: [WinError 5] Access is denied: 'C:/Users/Brad/.embeetle\\beetle.btl.old'
-[SETTINGS-ERROR] An error occured during creation of the settings file!
-u_riscv_xpack_toolchain_12.2.0_3_32b/bin/riscv-none-elf-', 'FLASHTOOL=C:/dev/software/embeetle/beetle_tools/windows/openocd_wch_0.11.0_dev02415_32b/bin/openocd.exe']
-
-cwd = C:/Users/Brad/Documents/GitHub/hermes/src/target/CH32V307
-
-
-
-$(MAKE)
-    build
-    -C
-    build
-    -f
-    ../config/makefile
-    TOOLPREFIX=$(TOOLPREFIX)
-    FLASHTOOL=$(FLASHTOOL)
-
-
-command = ['C:/dev/software/embeetle/beetle_tools/windows/gnu_make_4.2.1_64b/make.exe', 'build', '-C', 'build', '-f', '../config/makefile', 'TOOLPREFIX=C:/dev/software/embeetle/beetle_tools/windows/gnu_riscv_xpack_toolchain_12.2.0_3_32b/bin/riscv-none-elf-', 'FLASHTOOL=C:/dev/software/embeetle/beetle_tools/windows/openocd_wch_0.11.0_dev02415_32b/bin/openocd.exe']
-
-cwd = C:/Users/Brad/Documents/GitHub/hermes/src/target/CH32V307
-
-
 
 $(MAKE)
     clean

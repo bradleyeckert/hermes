@@ -43,6 +43,7 @@
 #define HERMES_ERROR_OUT_OF_MEMORY  9
 #define HERMES_ERROR_REKEYED       10
 #define HERMES_ERROR_MSG_NOT_SENT  11
+#define HERMES_ERROR_BUF_TOO_SMALL 12
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
@@ -53,7 +54,7 @@ enum States {
   GET_BOILER,
   GET_IV,
   GET_PAYLOAD,
-  AUTHENTICATE
+  HANG
 };
 
 /*
@@ -70,7 +71,7 @@ The FSM is not full-duplex. If the FSM has wait for the UART transmitter
 */
 
 typedef void (*hermes_ciphrFn)(uint8_t c);   // output raw ciphertext byte
-typedef void (*hermes_plainFn)(const uint8_t *src, uint32_t length);
+typedef void (*hermes_plainFn)(const uint8_t *src, unsigned int length);
 typedef int  (*hermes_rngFn)  (uint8_t *dest, int length);
 
 typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, int hsize, uint64_t ctr);
@@ -97,10 +98,10 @@ typedef struct
     uint64_t hctrTx;
     const uint8_t *boil;    // boilerplate
     const uint8_t *key;     // encryption/decryption key[32] and HMAC key[16]
-    uint8_t hmac[HERMES_HMAC_LENGTH];
     uint8_t *rxbuf;
     uint8_t *txbuf;
     enum States state;      // of the FSM
+    uint8_t hmac[HERMES_HMAC_LENGTH];
     uint32_t counter;       // TX counter
     uint16_t rBlocks;       // size of rxbuf in blocks
     uint16_t tBlocks;       // size of rxbuf in blocks
