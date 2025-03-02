@@ -8,7 +8,6 @@ AEAD-secured ports (for UARTs, etc.)
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 #include "hermes.h"
-#include "hermesHW.h"
 
 #define ALLOC_HEADROOM (HERMES_ALLOC_MEM_UINT32S - allocated_uint32s)
 
@@ -125,8 +124,8 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     int r = 0;
     int c;
     for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
-        c = getc_TRNG();  r |= c;  mIV[i] = (uint8_t)c;
-        c = getc_TRNG();  r |= c;  cIV[i] = (uint8_t)c;
+        c = ctx->rngFn();  r |= c;  mIV[i] = (uint8_t)c;
+        c = ctx->rngFn();  r |= c;  cIV[i] = (uint8_t)c;
         if (r & 0x100) {
             return HERMES_ERROR_TRNG_FAILURE;
         }
@@ -204,14 +203,16 @@ void hermesNoPorts(void) {
 
 // Add a secure port
 int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
-                   uint16_t rxBlocks, uint16_t txBlocks,
+                   uint16_t rxBlocks, uint16_t txBlocks, hermes_rngFn rngFn,
                    hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
-                   const uint8_t *key) {
+                   const uint8_t *key, hermes_WrKeyFn WrKeyFn) {
     memset(ctx, 0, sizeof(port_ctx));
     ctx->tmFn = plain;                          // plaintext output handler
     ctx->tcFn = ciphr;                          // ciphertext output handler
     ctx->boilFn = boiler;                       // boilerplate output handler
     ctx->key = key;
+    ctx->WrKeyFn = WrKeyFn;
+    ctx->rngFn = rngFn;
     ctx->boil = boilerplate;                    // counted string
     ctx->name = name;                           // Zstring name for debugging
     ctx->rxbuf = Allocate(rxBlocks << BLOCK_SHIFT);
@@ -466,7 +467,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                 case HERMES_MSG_NO_ACK:
                     break;
                 case HERMES_MSG_NEW_KEY:
-                    k = UpdateHermesKeySet(&ctx->rxbuf[PREAMBLE_SIZE]);
+                    k = ctx->WrKeyFn(&ctx->rxbuf[PREAMBLE_SIZE]);
                     c = 0;
                     if (k == NULL) return 0;
                     return HERMES_ERROR_REKEYED;

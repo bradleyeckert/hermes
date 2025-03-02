@@ -72,7 +72,8 @@ The FSM is not full-duplex. If the FSM has wait for the UART transmitter
 
 typedef void (*hermes_ciphrFn)(uint8_t c);   // output raw ciphertext byte
 typedef void (*hermes_plainFn)(const uint8_t *src, unsigned int length);
-typedef int  (*hermes_rngFn)  (uint8_t *dest, int length);
+typedef int  (*hermes_rngFn)  (void);
+typedef uint8_t* (*hermes_WrKeyFn)(uint8_t* keyset);
 
 typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, int hsize, uint64_t ctr);
 typedef void (*hmac_putcFn)(size_t *ctx, uint8_t c);
@@ -89,6 +90,8 @@ typedef struct
     hermes_plainFn boilFn;  // boilerplate handler (from hermesPutc)
     hermes_plainFn tmFn;    // plaintext handler (from hermesPutc)
     hermes_ciphrFn tcFn;    // ciphertext transmit function
+    hermes_WrKeyFn WrKeyFn; // rewrite key set for this port
+    hermes_rngFn rngFn;     // get a reasonably random byte
     hmac_initFn hInitFn;    // HMAC initialization function
     hmac_putcFn hPutcFn;    // HMAC putc function
     hmac_finalFn hFinalFn;  // HMAC finalization function
@@ -142,9 +145,9 @@ void hermesNoPorts(void);
  * @return    0 if okay, otherwise HERMES_ERROR_?
  */
 int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
-                   uint16_t rxBlocks, uint16_t txBlocks,
+                   uint16_t rxBlocks, uint16_t txBlocks, hermes_rngFn rngFn,
                    hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
-                   const uint8_t *key);
+                   const uint8_t *key, hermes_WrKeyFn WrKeyFn);
 
 
 /** Input raw ciphertext (or command), such as received from a UART

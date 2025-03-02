@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 #include "../hermes.h"
-#include "../hermesHW.h"
 
 // -----------------------------------------------------------------------------
 // Some default values for testing
@@ -174,19 +173,33 @@ void CharToFile(uint8_t c) {
     tally++;
 }
 
+// Keys
+//                            |---------- encryption ---------|---signature---|---key_HMAC---|
+//                            0000000000000000111111111111111122222222222222223333333333333333
+// encryption256, hash128 =   0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+static uint8_t my_keys[64] = "Do not use this encryption key! Or this one...";
+
+/*
+Write the key and return the address of the key (it may have changed)
+Return NULL if key cannot be updated
+*/
+uint8_t * UpdateKeySet(uint8_t* keyset) {
+    memcpy(my_keys, keyset, 64);
+	return my_keys;
+}
+
+int getc_RNG(void) {
+	return rand() & 0xFF;	// DO NOT USE in a real application
+}                           // Use a TRNG instead
+
 int main() {
     int tests = 0x1FF;    // enable these tests...
 //    snoopy = 1;         // display the wire traffic
     hermesNoPorts();
-    uint8_t* keys = HermesKeySet();
-    if (!keys) {
-        printf("\nMissing keys");
-        return 10;
-    }
-    hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, 2,
-                  BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, keys);
-    int ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, 2,
-                  BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, keys);
+    hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, 2, getc_RNG,
+                  BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, my_keys, UpdateKeySet);
+    int ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, 2, getc_RNG,
+                  BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, my_keys, UpdateKeySet);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));
         printf("too small by %d", -hermesRAMunused()/4);
