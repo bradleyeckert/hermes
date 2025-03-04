@@ -70,8 +70,9 @@ The FSM is not full-duplex. If the FSM has wait for the UART transmitter
 - Buffer the output with a FIFO
 */
 
-typedef void (*hermes_ciphrFn)(uint8_t c);   // output raw ciphertext byte
-typedef void (*hermes_plainFn)(const uint8_t *src, unsigned int length);
+typedef void (*hermes_ciphrFn)(uint8_t c);    // output raw ciphertext byte
+typedef void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack);
+typedef void (*hermes_boilFn) (const uint8_t *src);
 typedef int  (*hermes_rngFn)  (void);
 typedef uint8_t* (*hermes_WrKeyFn)(uint8_t* keyset);
 
@@ -87,7 +88,7 @@ typedef struct
 	siphash_ctx *rhCtx;     // receiver HMAC context
     xChaCha_ctx *tcCtx;     // transmitter encryption context
 	siphash_ctx *thCtx;	    // transmitter HMAC context
-    hermes_plainFn boilFn;  // boilerplate handler (from hermesPutc)
+    hermes_boilFn boilFn;   // boilerplate handler (from hermesPutc)
     hermes_plainFn tmFn;    // plaintext handler (from hermesPutc)
     hermes_ciphrFn tcFn;    // ciphertext transmit function
     hermes_WrKeyFn WrKeyFn; // rewrite key set for this port
@@ -146,7 +147,7 @@ void hermesNoPorts(void);
  */
 int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, uint16_t txBlocks, hermes_rngFn rngFn,
-                   hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
+                   hermes_boilFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *key, hermes_WrKeyFn WrKeyFn);
 
 

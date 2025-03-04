@@ -61,20 +61,31 @@ static void BobCiphertextOutput(uint8_t c) {
 
 /*
 Received-plaintest functions
-Boilerplate is counted two places: In the first byte and the length parameter.
-They should match, so compare to rule out errors.
+PlaintextHandler takes a u16-counted src string
+The u16-counted ack string has been set to default empty.
 */
-static void PlaintextHandler(const uint8_t *src, unsigned int length) {
+static void PlaintextHandler(const uint8_t *src, uint8_t *ack) {
+    uint16_t length;
+    memcpy (&length, src, 2);  // little-endian msg length
     printf("\nPlaintext {");
-    while (length--) putc(*src++, stdout);
+    for (int i = 0; i < length; i++) {
+        putc(src[i + sizeof(uint16_t)], stdout);
+    }
     printf("} ");
+    /*
+    if (ack) { // a return message can be sent
+        ack[0] = 5;
+        ack[1] = 0;
+        memcpy(&ack[2], "Hello", 5);
+    }
+    */
 }
 
-static void BoilerHandlerA(const uint8_t *src, unsigned int length) {
+static void BoilerHandlerA(const uint8_t *src) {
     printf("\nAlice received %d-byte boilerplate {%s}", src[0], &src[1]);
 }
 
-static void BoilerHandlerB(const uint8_t *src, unsigned int length) {
+static void BoilerHandlerB(const uint8_t *src) {
     printf("\n  Bob received %d-byte boilerplate {%s}", src[0], &src[1]);
 }
 
@@ -193,8 +204,8 @@ int getc_RNG(void) {
 }                           // Use a TRNG instead
 
 int main() {
-    int tests = 0x1FF;    // enable these tests...
-//    snoopy = 1;         // display the wire traffic
+    int tests = 0x1FF;      // enable these tests...
+//    snoopy = 1;             // display the wire traffic
     hermesNoPorts();
     hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, 2, getc_RNG,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, my_keys, UpdateKeySet);

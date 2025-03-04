@@ -156,33 +156,21 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     return 0;
 }
 
-// Encrypt and send an ACK or NACK with a 1-byte message
-static int SendACK (port_ctx *ctx, int tag, uint8_t c) {
-    uint8_t m[16];
-    m[0] = c;
-    PRINTF("\nEncrypting ACK/NACK, block counter = %d; ", ctx->tcCtx->blox);
-    ctx->cBlockFn((void *)&*ctx->tcCtx, m, m, 0);
-    SendHeader(ctx, tag);
-    Send16(ctx, m);
-    SendTxHash(ctx, 0);
-    return 0;
-}
-
 #define PREAMBLE_SIZE 3
 #define MAX_TX_LENGTH ((ctx->tBlocks << BLOCK_SHIFT) - PREAMBLE_SIZE)
 #define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE))
 
 // Encrypt and send a message
-static int ResendMessage (port_ctx *ctx) {
+static int ResendMessage (port_ctx *ctx, uint8_t tag) {
     uint8_t m[16];
     uint16_t bytes;
     ctx->retries = 0;
     memcpy(&bytes, &ctx->txbuf[1], 2);
     bytes += PREAMBLE_SIZE;                     // include preamble in message
-    PRINTF("\n%s sending MESSAGE[%d/%d], tAck=%d, rAck=%d; ",
-        ctx->name, bytes, ((bytes + 15) & ~0x0F), ctx->tAck, ctx->rAck);
+    PRINTF("\n%s sending MESSAGE[%d/%d], tAck=%d, rAck=%d, tag=%d; ",
+        ctx->name, bytes, ((bytes + 15) & ~0x0F), ctx->tAck, ctx->rAck, tag);
     bytes = (bytes + 15) & ~0x0F;               // send whole blocks
-    SendHeader(ctx, HERMES_TAG_MESSAGE);
+    SendHeader(ctx, tag);
     for (int i = 0; i < bytes; i += 16) {       // encrypt blocks
         PRINTF("\nEncrypting MESSAGE, block counter = %d; ", ctx->tcCtx->blox);
         ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->txbuf[i], m, 0);
@@ -190,6 +178,11 @@ static int ResendMessage (port_ctx *ctx) {
     }
     SendTxHash(ctx, 0);
     return 0;
+}
+
+static void setPreamble(port_ctx *ctx, uint8_t tag, uint16_t length) {
+    ctx->txbuf[0] = tag;
+    memcpy(&ctx->txbuf[1], &length, 2);
 }
 
 // -----------------------------------------------------------------------------
@@ -204,7 +197,7 @@ void hermesNoPorts(void) {
 // Add a secure port
 int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, uint16_t txBlocks, hermes_rngFn rngFn,
-                   hermes_plainFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
+                   hermes_boilFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *key, hermes_WrKeyFn WrKeyFn) {
     memset(ctx, 0, sizeof(port_ctx));
     ctx->tmFn = plain;                          // plaintext output handler
@@ -278,28 +271,25 @@ int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
         PRINTF("\nTruncating message to %d bytes, ", len);
     }
     ctx->tAck = ctx->rAck;                      // tag as unacknowledged
-    ctx->txbuf[0] = ctx->tAck;                  // the message counter,
-    memcpy(&ctx->txbuf[1], &len, 2);            // save the message length,
+    setPreamble(ctx, ctx->tAck, len);
     memcpy(&ctx->txbuf[PREAMBLE_SIZE], m, len); // and the input
-    return ResendMessage(ctx) | r;
+    return ResendMessage(ctx, HERMES_TAG_MESSAGE) | r;
 }
 
 // Encrypt and send a re-key message, buffering in case of transmission error.
 // ACK is returned if failure.
 int hermesReKey(port_ctx *ctx, const uint8_t *key){
     if (hermesAvail(ctx) < 64) return HERMES_ERROR_MSG_NOT_SENT;
-    ctx->txbuf[0] = HERMES_MSG_NEW_KEY;
-    ctx->txbuf[1] = 64;
-    ctx->txbuf[2] = 0;
+    setPreamble(ctx, HERMES_MSG_NEW_KEY, 64);
     memcpy(&ctx->txbuf[PREAMBLE_SIZE], key, 64);
-    return ResendMessage(ctx);
+    return ResendMessage(ctx, HERMES_TAG_MESSAGE);
 }
 
 // -----------------------------------------------------------------------------
 // Receive char or command from input stream
 int hermesPutc(port_ctx *ctx, uint16_t c){
     int r = 0;
-    int temp, i, badHMAC;
+    int temp, badHMAC;
     uint8_t *k;
     if (c & 0xFF00) {
         switch (c) {
@@ -335,6 +325,7 @@ reset:      hermesPair(ctx);
     }
     // FSM ---------------------------------------------------------------------
     ctx->hPutcFn((void *)&*ctx->rhCtx, c);      // add to hash
+    int i = ctx->ridx;
     switch (ctx->state) {
     case IDLE:
         if (c < HERMES_TAG_GET_BOILER) break;   // limit range of valid tags
@@ -385,19 +376,20 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         }
         goto noend;
     case GET_BOILER:
-        if (ctx->ridx == MAX_RX_LENGTH) {
+        if (i == MAX_RX_LENGTH) {
             r = HERMES_ERROR_LONG_BOILERPLT;
             ended = 1;
         }
         if (ended) {
-            ctx->boilFn(ctx->rxbuf, ctx->ridx);
+            if ((i - 2) == ctx->rxbuf[0])
+            ctx->boilFn(ctx->rxbuf);
         } else {
             ctx->rxbuf[ctx->ridx++] = c;
         }
         goto noend;
     case GET_PAYLOAD:
         if (!ended) {                           // input terminated by end token
-            if (ctx->ridx != (ctx->rBlocks << BLOCK_SHIFT)) {
+            if (i != (ctx->rBlocks << BLOCK_SHIFT)) {
                 ctx->rxbuf[ctx->ridx++] = c;
                 temp = ctx->ridx;
                 if (!ctx->MACed && !(temp & 15)) {
@@ -412,7 +404,8 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             break;
         }
         ctx->state = IDLE;
-        temp = ctx->ridx - HERMES_HMAC_LENGTH;
+        temp = i - HERMES_HMAC_LENGTH;
+        c = ctx->rxbuf[0];                      // repurpose c
         badHMAC = 0;                            // test the digital signature
         for (i = 0; i < HERMES_HMAC_LENGTH; i++) {
             if (ctx->hmac[i] != ctx->rxbuf[i+temp]) {
@@ -420,7 +413,6 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                 badHMAC = 1;
             }
         }
-        c = ctx->rxbuf[0];
         PRINTF("\n%s received packet of length %d, tag %d, rxbuf[0]=0x%02X; ",
                ctx->name, temp, ctx->tag, c);
         if (badHMAC) {
@@ -457,25 +449,27 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                     if (ctx->retries > 3) {
                         hermesPair(ctx);
                     }
-                    SendACK(ctx, HERMES_TAG_NACK, ctx->rAck);
+                    setPreamble(ctx, 0, 0);     // NACK is an empty message
+                    ResendMessage(ctx, HERMES_TAG_NACK);
                     r = 0; // override "bad HMAC", sender gets a second chance
                 }
             } else {
                 memcpy (&temp, &ctx->rxbuf[1], 2);  // little-endian msg length
                 if (temp > MAX_RX_LENGTH) temp = MAX_RX_LENGTH; // limit in case of error ***
-                switch (c) {
-                case HERMES_MSG_NO_ACK:
-                    break;
-                case HERMES_MSG_NEW_KEY:
+                if (c == HERMES_MSG_NEW_KEY) {
                     k = ctx->WrKeyFn(&ctx->rxbuf[PREAMBLE_SIZE]);
                     c = 0;
                     if (k == NULL) return 0;
                     return HERMES_ERROR_REKEYED;
-                default:
-                    ctx->rAck = c;
-                    SendACK(ctx, HERMES_TAG_ACK, (c + 1) & 0x7F);
                 }
-                ctx->tmFn(&ctx->rxbuf[PREAMBLE_SIZE], temp);
+                setPreamble(ctx, (c + 1) & 0x7F, 0); // default ACK is empty
+                ctx->tmFn(&ctx->rxbuf[1], &ctx->txbuf[1]);
+                // ACK should accept an ack message, but it can't be in the rx buffer
+                // temp is not used,
+                if (c != HERMES_MSG_NO_ACK) {
+                    ctx->rAck = c;
+                    ResendMessage(ctx, HERMES_TAG_ACK);
+                }
             }
             break;
         case HERMES_TAG_ACK:
@@ -483,17 +477,19 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                 PRINTF("DROPPED ACK, ");
                 break;
             }
-            PRINTF("\nReceived ACK=%d; ", ctx->rxbuf[0]);
-            ctx->rAck = ctx->rxbuf[0];
+            memcpy(&temp, &ctx->rxbuf[1], 2);
+            PRINTF("\nReceived ACK=%d, length=%d; ", c, temp);
+            ctx->rAck = c;
             ctx->retries = 0;
+            if (temp) ctx->tmFn(&ctx->rxbuf[1], NULL);
             break;
         case HERMES_TAG_NACK:
             if (badHMAC) {
                 PRINTF("DROPPED NACK, ");
                 break;
             }
-            PRINTf("\n<<< Received NACK=%d; ", ctx->rxbuf[0]);
-            ResendMessage(ctx);
+            PRINTf("\n<<< Received NACK=%d; ", c);
+            ResendMessage(ctx, HERMES_TAG_MESSAGE);
             break;
         default: break;
         }
