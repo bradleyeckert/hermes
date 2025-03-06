@@ -63,8 +63,9 @@ static void BobCiphertextOutput(uint8_t c) {
 Received-plaintest functions
 PlaintextHandler takes a u16-counted src string
 The u16-counted ack string has been set to default empty.
+As many as maxack bytes can be returned.
 */
-static void PlaintextHandler(const uint8_t *src, uint8_t *ack) {
+static void PlaintextHandler(const uint8_t *src, uint8_t *ack, uint16_t maxack) {
     uint16_t length;
     memcpy (&length, src, 2);  // little-endian msg length
     printf("\nPlaintext {");

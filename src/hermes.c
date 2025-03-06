@@ -157,7 +157,7 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
 }
 
 #define PREAMBLE_SIZE 3
-#define MAX_TX_LENGTH ((ctx->tBlocks << BLOCK_SHIFT) - PREAMBLE_SIZE)
+#define MAX_TX_LENGTH ((ctx->tBlocks << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE))
 #define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE))
 
 // Encrypt and send a message
@@ -188,7 +188,7 @@ static void setPreamble(port_ctx *ctx, uint8_t tag, uint16_t length) {
 // -----------------------------------------------------------------------------
 // Public functions
 
-// Call this before setting up any hermes ports
+// Call this before setting up any hermes ports and when closing app.
 void hermesNoPorts(void) {
 	memset(context_memory, 0, sizeof(context_memory));
 	allocated_uint32s = 0;
@@ -463,7 +463,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                     return HERMES_ERROR_REKEYED;
                 }
                 setPreamble(ctx, (c + 1) & 0x7F, 0); // default ACK is empty
-                ctx->tmFn(&ctx->rxbuf[1], &ctx->txbuf[1]);
+                ctx->tmFn(&ctx->rxbuf[1], &ctx->txbuf[1], MAX_TX_LENGTH);
                 // ACK should accept an ack message, but it can't be in the rx buffer
                 // temp is not used,
                 if (c != HERMES_MSG_NO_ACK) {
@@ -481,7 +481,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             PRINTF("\nReceived ACK=%d, length=%d; ", c, temp);
             ctx->rAck = c;
             ctx->retries = 0;
-            if (temp) ctx->tmFn(&ctx->rxbuf[1], NULL);
+            if (temp) ctx->tmFn(&ctx->rxbuf[1], NULL, 0);
             break;
         case HERMES_TAG_NACK:
             if (badHMAC) {

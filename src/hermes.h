@@ -1,5 +1,5 @@
-#ifndef __TCSTREAMS_H__
-#define __TCSTREAMS_H__
+#ifndef __HERMES_H__
+#define __HERMES_H__
 
 #include <stdint.h>
 #include "xchacha/src/xchacha.h"
@@ -71,7 +71,7 @@ The FSM is not full-duplex. If the FSM has wait for the UART transmitter
 */
 
 typedef void (*hermes_ciphrFn)(uint8_t c);    // output raw ciphertext byte
-typedef void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack);
+typedef void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack, uint16_t maxack);
 typedef void (*hermes_boilFn) (const uint8_t *src);
 typedef int  (*hermes_rngFn)  (void);
 typedef uint8_t* (*hermes_WrKeyFn)(uint8_t* keyset);
@@ -207,4 +207,4 @@ void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len);
 int hermesStreamInit(port_ctx *ctx);
 int hermesStreamOut(port_ctx *ctx, const uint8_t *src, int len);
 
-#endif /* __TCSTREAMS_H__ */
+#endif /* __HERMES_H__ */

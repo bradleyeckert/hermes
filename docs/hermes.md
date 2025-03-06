@@ -51,11 +51,11 @@ Most of the byte-order dependency comes from using `memcpy` to move data to and 
 * On-chip Flash memory for code and keys
 * UART
 
-The true random number generator is used to generate unique IVs, not keys, so the quality of its entropy is not critical. The idea is to avoid IV reuse. A reused IV is unlikely to be useful to an attacker since they would need the previous keystream, only obtainable from the plaintext (which they wouldn't have).
+The true random number generator is used to generate unique IVs, not keys, so the quality of its entropy is not critical. The idea is to avoid IV reuse. Even then, a reused IV is unlikely to be useful to an attacker since they would need the previous keystream, only obtainable from the plaintext (which they wouldn't have).
 
 ## Pairing
 
-Key management is outside the scope of `hermes`. Pairing assumes that both ends of the communication channel have the same private keys. A pairing handshake between Alice and Bob proceeds as follows:
+Key management is outside the scope of `hermes`. Pairing assumes that both ends of the communication channel have the same private keys. They are pre-shared. A pairing handshake between Alice and Bob proceeds as follows:
 
 - Bob sends a pairing request to Alice
 - Alice sends a random 128-bit IV to Bob
@@ -127,3 +127,19 @@ Rather than rely on handshaking, data can be streamed out of the UART as a file 
 
 In the WCH platform, `printf` is built on the `int _write(int fd, char *buf, int size)` primitive. Since `size` could be anything, but is usually not much, `printf` initializes by sending a boilerplate and nonce. Each `printf` uses a non-acknowledged send. When the number of bytes sent crosses a threshold, the boilerplate and nonce may be re-sent in case the terminal got lost. Each `printf` ( or `hermesStreamOut`) is one AEAD message. If the message is too big for the receive buffer the message will be lost, so make sure the receive buffer is bigger than `printf` will ever need.
 
+## Implementation
+
+Streams are byte-wise processed, with incoming bytes fed into a FSM one at a time and outgoing bytes fed to an output function. The basic flow is:
+
+- Incoming ciphertext --> `int hermesPutc(port_ctx *ctx, uint16_t c);`
+- `void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack);` --> Plaintext to app
+- Plaintext from app --> `int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes);`
+- `void (*hermes_ciphrFn)(uint8_t c);` --> Outgoing ciphertext
+
+Underlying functions (those with various dependencies) are late-bound in the port_ctx struct to simplify reuse. There is no heap usage. Instead, `hermes` implements its own memory allocation. It rurns out that each port needs about 1KB for context and buffers.
+
+There is some fault tolerance, as illustrated by `test.c`. Messages are re-sent until they get through. The FSM is supposed to be immune to input fuzzing. If it gets faked out by bad data, it does not walk off the end of the input buffer. There should be a test to prove this, though.
+
+`void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack);` is the workhorse of `hermes`. It accepts a plaintext message in the form of a u16-counted string. That means the first two bytes form a little-endian byte count and the rest is that many bytes.
+
+An ACK packet is returned to the sender to verify it was received. The ACK is encrypted and signed, as is NACK. A return message can be added to the ACK by placing a u16-counted response in `*ack`.
