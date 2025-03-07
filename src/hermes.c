@@ -46,6 +46,22 @@ static void * Allocate(int bytes) {
 	return r;
 }
 
+static int testHMAC(port_ctx *ctx, const uint8_t *buf) {
+    for (int i = 0; i < HERMES_HMAC_LENGTH; i++) {
+        if (ctx->hmac[i] != buf[i]) {
+            return HERMES_ERROR_BAD_HMAC;
+        }
+    }
+    return 0;
+}
+
+static int testKey(port_ctx *ctx, const uint8_t *key) {
+    ctx->hInitFn((void *)&*ctx->rhCtx, &key[32], 16, HERMES_KEY_HASH_KEY);
+    for (int i=0; i < 48; i++) ctx->hPutcFn((void *)&*ctx->rhCtx, key[i]);
+    ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
+    return testHMAC(ctx, &key[48]);
+}
+
 static void SendByteU(port_ctx *ctx, uint8_t c) {
     if ((c & 0xFE) == HERMES_TAG_END) {         // HERMES_TAG_END or HERMES_ESCAPE
         ctx->tcFn(HERMES_ESCAPE);
@@ -226,7 +242,7 @@ int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char*
         ctx->cBlockFn = xc_crypt_block_g;
     }
     if (ALLOC_HEADROOM < 0) return HERMES_ERROR_OUT_OF_MEMORY;
-    return 0;
+    return testKey(ctx, key);
 }
 
 int hermesRAMused (int ports) {
@@ -406,13 +422,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         ctx->state = IDLE;
         temp = i - HERMES_HMAC_LENGTH;
         c = ctx->rxbuf[0];                      // repurpose c
-        badHMAC = 0;                            // test the digital signature
-        for (i = 0; i < HERMES_HMAC_LENGTH; i++) {
-            if (ctx->hmac[i] != ctx->rxbuf[i+temp]) {
-                r = HERMES_ERROR_BAD_HMAC;
-                badHMAC = 1;
-            }
-        }
+        badHMAC = testHMAC(ctx, &ctx->rxbuf[temp]);
         PRINTF("\n%s received packet of length %d, tag %d, rxbuf[0]=0x%02X; ",
                ctx->name, temp, ctx->tag, c);
         if (badHMAC) {
@@ -449,23 +459,23 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                     if (ctx->retries > 3) {
                         hermesPair(ctx);
                     }
-                    setPreamble(ctx, 0, 0);     // NACK is an empty message
+                    setPreamble(ctx, 0, 0);         // NACK is an empty message
                     ResendMessage(ctx, HERMES_TAG_NACK);
                     r = 0; // override "bad HMAC", sender gets a second chance
                 }
             } else {
                 memcpy (&temp, &ctx->rxbuf[1], 2);  // little-endian msg length
-                if (temp > MAX_RX_LENGTH) temp = MAX_RX_LENGTH; // limit in case of error ***
+                if (temp > MAX_RX_LENGTH) temp = MAX_RX_LENGTH;
                 if (c == HERMES_MSG_NEW_KEY) {
+                    temp = testKey(ctx, &ctx->rxbuf[PREAMBLE_SIZE]);
+                    if (temp) return temp;          // bad key
                     k = ctx->WrKeyFn(&ctx->rxbuf[PREAMBLE_SIZE]);
                     c = 0;
-                    if (k == NULL) return 0;
+                    if (k == NULL) return 0;        // no key
                     return HERMES_ERROR_REKEYED;
                 }
                 setPreamble(ctx, (c + 1) & 0x7F, 0); // default ACK is empty
                 ctx->tmFn(&ctx->rxbuf[1], &ctx->txbuf[1], MAX_TX_LENGTH);
-                // ACK should accept an ack message, but it can't be in the rx buffer
-                // temp is not used,
                 if (c != HERMES_MSG_NO_ACK) {
                     ctx->rAck = c;
                     ResendMessage(ctx, HERMES_TAG_ACK);

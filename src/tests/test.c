@@ -167,7 +167,8 @@ int SendBob(int msgID) {
 }
 
 void PairAlice(void) {
-    printf("\nAlice is pairing with keys {%s}", Alice.key);
+    printf("\nAlice is pairing with keys ");
+    for (int i=0; i<64; i++) printf("%02x", Alice.key[i]);
     hermesPair(&Alice);
     if (Alice.hctrTx != Bob.hctrRx) printf("\nERROR: Alice cannot send to Bob");
     if (Bob.hctrTx != Alice.hctrRx) printf("\nERROR: Bob cannot send to Alice");
@@ -185,11 +186,17 @@ void CharToFile(uint8_t c) {
     tally++;
 }
 
-// Keys
-//                            |---------- encryption ---------|---signature---|---key_HMAC---|
-//                            0000000000000000111111111111111122222222222222223333333333333333
-// encryption256, hash128 =   0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-static uint8_t my_keys[64] = "Do not use this encryption key! Or this one...";
+uint8_t my_keys[64] = {
+  0x18,0x70,0x92,0xDA,0x64,0x54,0xCE,0xB1,0x85,0x3E,0x69,0x15,0xF8,0x46,0x6A,0x04,
+  0x96,0x73,0x0E,0xD9,0x16,0x2F,0x67,0x68,0xD4,0xF7,0x4A,0x4A,0xD0,0x57,0x68,0x76,
+  0xFA,0x16,0xBB,0x11,0xAD,0xAE,0x24,0x88,0x79,0xFE,0x52,0xDB,0x25,0x43,0xE5,0x3C,
+  0xC1,0xC3,0x22,0x5B,0x7B,0x39,0x18,0x06,0x4F,0xCB,0x50,0x69,0x24,0x07,0x2F,0x12};
+
+const uint8_t new_keys[64] = {
+  0x65,0x38,0x2A,0x46,0x89,0xA9,0x82,0x79,0x7A,0x76,0x78,0xC2,0x63,0xB1,0x26,0xDF,
+  0xDA,0x29,0x6D,0x3E,0x62,0xE0,0x96,0x12,0x34,0xBF,0x39,0xA6,0x3F,0x89,0x5E,0xF1,
+  0x6D,0x0E,0xE3,0x6C,0x28,0xA1,0x1E,0x20,0x1D,0xCB,0xC2,0x03,0x3F,0x41,0x07,0x84,
+  0x14,0x13,0x34,0xB5,0x11,0x23,0x73,0xE7,0xE5,0x98,0xA1,0x2F,0xCF,0xE5,0x16,0x7C};
 
 /*
 Write the key and return the address of the key (it may have changed)
@@ -204,17 +211,33 @@ int getc_RNG(void) {
 	return rand() & 0xFF;	// DO NOT USE in a real application
 }                           // Use a TRNG instead
 
+void makeKey(void) {        // printf a random key set, with HMAC
+    uint8_t k[64];
+    for (int i=0; i < 48; i++) k[i] = getc_RNG();
+    Alice.hInitFn((void*)Alice.rhCtx, &k[32], 16, HERMES_KEY_HASH_KEY);
+    for (int i=0; i < 48; i++) Alice.hPutcFn((void*)Alice.rhCtx, k[i]);
+    Alice.hFinalFn((void*)Alice.rhCtx, &k[48]);
+    printf("uint8_t key[64] = {");
+    for (uint8_t i = 0; i < 64; i++) {
+        if ((i % 16) == 0) printf("\n  ");
+        printf("0x%02X", k[i]);
+        if (i != 63) printf(",");
+    }
+    printf("};\n");
+}
+
 int main() {
     int tests = 0x1FF;      // enable these tests...
 //    snoopy = 1;             // display the wire traffic
     hermesNoPorts();
-    hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, 2, getc_RNG,
+    int ior = hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, 2, getc_RNG,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, my_keys, UpdateKeySet);
-    int ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, 2, getc_RNG,
+    if (!ior) ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, 2, getc_RNG,
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, my_keys, UpdateKeySet);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));
-        printf("too small by %d", -hermesRAMunused()/4);
+        printf("too small by %d ", -hermesRAMunused()/4);
+        printf("or the key has a bad HMAC");
         return ior;
     }
     printf("Static context RAM usage: %d bytes per port\n", hermesRAMused(2)/2);
@@ -251,7 +274,7 @@ int main() {
     }
     if (tests & 0x80) {
         printf("\n\nRe-keying =============================");
-        i = hermesReKey(&Alice, (uint8_t*)"I refuse to join any club that would have me as a member.");
+        i = hermesReKey(&Alice, new_keys);
         if (i) printf("\nError %d: %s, ", i, errorCode(i));
         PairAlice();
     }

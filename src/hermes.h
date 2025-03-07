@@ -5,7 +5,8 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_ALLOC_MEM_UINT32S  308
+#define HERMES_ALLOC_MEM_UINT32S  308   /* longs for context memory */
+#define HERMES_KEY_HASH_KEY      0ull   /* 8-byte keyset master key */
 #define HERMES_FILE_MESSAGE_SIZE    9   /* Log2 of file message block */
 
 #define HERMES_IV_LENGTH           16   /* Bytes in IV, should be 16 */
