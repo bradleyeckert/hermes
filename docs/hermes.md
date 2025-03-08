@@ -67,6 +67,8 @@ After the pairing handshake is finished, `hermesAvail(&Alice)` returns 0 if sync
 
 Communication is ACKed, so it requires a successful IV setup in both directions.
 
+Pairing initializes the keystream. Messages use 16-byte chunks of that keystream. As long as a different IV is used for each pairing sequence, the keystream does not repeat.
+
 ## Key management
 
 The only plaintext sent over the port, besides message tags, is boilerplate information that should be used to supply a UUID. A key vault would use the UUID to look up the key. `hermesBoiler(&Alice)` triggers a boilerplate response from Bob. The response is sent to a handler function that will use it to look up the keys.
