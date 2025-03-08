@@ -134,7 +134,7 @@ int SendAlice(int msgID) {
     if (msgID >= elements) msgID = elements - 1;
     const uint8_t* s = AliceMessages[msgID];
     if (!hermesAvail(&Alice)) {
-        hermesPair(&Alice);
+        hermesPutc(&Alice, HERMES_CMD_RESET);
     }
     int ior = hermesSend(&Alice, s, strlen((char*)s));
     if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
@@ -146,7 +146,7 @@ int StreamAlice(int msgID) {
     if (msgID >= elements) msgID = elements - 1;
     const uint8_t* s = AliceMessages[msgID];
     if (!hermesAvail(&Alice)) {
-        hermesPair(&Alice);
+        hermesPutc(&Alice, HERMES_CMD_RESET);
     }
     int ior = hermesStreamOut(&Alice, s, strlen((char*)s));
     if (ior) printf("\n<<<hermesStreamOut>>> returned error code %d ", ior);
@@ -159,7 +159,7 @@ int SendBob(int msgID) {
     const uint8_t* s = BobMessages[msgID];
     if (!hermesAvail(&Bob)) {
         printf("\nRe-authenticating the connection");
-        hermesPair(&Bob);
+        hermesPutc(&Bob, HERMES_CMD_RESET);
     }
     int ior = hermesSend(&Bob, s, strlen((char*)s));
     if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
@@ -169,7 +169,7 @@ int SendBob(int msgID) {
 void PairAlice(void) {
     printf("\nAlice is pairing with keys ");
     for (int i=0; i<64; i++) printf("%02x", Alice.key[i]);
-    hermesPair(&Alice);
+    hermesPutc(&Alice, HERMES_CMD_RESET);
     if (Alice.hctrTx != Bob.hctrRx) printf("\nERROR: Alice cannot send to Bob");
     if (Bob.hctrTx != Alice.hctrRx) printf("\nERROR: Bob cannot send to Alice");
     printf("\nAvailability: Alice=%d, Bob=%d",
@@ -215,7 +215,7 @@ void makeKey(void) {        // printf a random key set, with HMAC
     uint8_t k[64];
     for (int i=0; i < 48; i++) k[i] = getc_RNG();
     Alice.hInitFn((void*)Alice.rhCtx, &k[32], 16, HERMES_KEY_HASH_KEY);
-    for (int i=0; i < 48; i++) Alice.hPutcFn((void*)Alice.rhCtx, k[i]);
+    for (int i=0; i < 48; i++) Alice.hputcFn((void*)Alice.rhCtx, k[i]);
     Alice.hFinalFn((void*)Alice.rhCtx, &k[48]);
     printf("uint8_t key[64] = {");
     for (uint8_t i = 0; i < 64; i++) {
@@ -247,8 +247,8 @@ int main() {
     Alice.hctrRx = 0x341200;
     Bob.hctrTx = 0x785600;
     Bob.hctrRx = 0x7856;
-    if (tests & 0x01) hermesBoiler(&Alice);
-    if (tests & 0x02) hermesBoiler(&Bob);
+    if (tests & 0x01) hermesPutc(&Alice, HERMES_TAG_GET_BOILER);
+    if (tests & 0x02) hermesPutc(&Bob, HERMES_TAG_GET_BOILER);
     if (tests & 0x04) PairAlice();
     int i, j;
     if (tests & 0x08) {
@@ -282,7 +282,7 @@ int main() {
     printf("\nBob sent %d bytes", Bob.counter);
     if (tests & 0x100) {
         printf("\n\nTest write to demofile.bin ");
-        Alice.tcFn = CharToFile;
+        Alice.ciphrFn = CharToFile;
         file = fopen("demofile.bin", "wb");
         if (file == NULL) {
             printf("\nError creating file!");

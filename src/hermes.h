@@ -48,6 +48,7 @@
 
 // Commands
 #define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
+#define HERMES_CMD_GET_BOILER     257   /* Request boilerplate */
 
 enum States {
   IDLE = 0,
@@ -73,7 +74,7 @@ The FSM is not full-duplex. If the FSM has wait for the UART transmitter
 
 typedef void (*hermes_ciphrFn)(uint8_t c);    // output raw ciphertext byte
 typedef void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack, uint16_t maxack);
-typedef void (*hermes_boilFn) (const uint8_t *src);
+typedef void (*hermes_boilrFn) (const uint8_t *src);
 typedef int  (*hermes_rngFn)  (void);
 typedef uint8_t* (*hermes_WrKeyFn)(uint8_t* keyset);
 
@@ -89,13 +90,13 @@ typedef struct
 	siphash_ctx *rhCtx;     // receiver HMAC context
     xChaCha_ctx *tcCtx;     // transmitter encryption context
 	siphash_ctx *thCtx;	    // transmitter HMAC context
-    hermes_boilFn boilFn;   // boilerplate handler (from hermesPutc)
-    hermes_plainFn tmFn;    // plaintext handler (from hermesPutc)
-    hermes_ciphrFn tcFn;    // ciphertext transmit function
+    hermes_boilrFn boilrFn; // boilerplate handler (from hermesPutc)
+    hermes_plainFn plainFn; // plaintext handler (from hermesPutc)
+    hermes_ciphrFn ciphrFn; // ciphertext transmit function
     hermes_WrKeyFn WrKeyFn; // rewrite key set for this port
     hermes_rngFn rngFn;     // get a reasonably random byte
     hmac_initFn hInitFn;    // HMAC initialization function
-    hmac_putcFn hPutcFn;    // HMAC putc function
+    hmac_putcFn hputcFn;    // HMAC putc function
     hmac_finalFn hFinalFn;  // HMAC finalization function
     crypt_initFn cInitFn;   // Encryption initialization function
     crypt_blockFn cBlockFn; // Encryption block function
@@ -148,7 +149,7 @@ void hermesNoPorts(void);
  */
 int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, uint16_t txBlocks, hermes_rngFn rngFn,
-                   hermes_boilFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
+                   hermes_boilrFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *key, hermes_WrKeyFn WrKeyFn);
 
 
@@ -158,19 +159,6 @@ int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char*
  * @return    0 if okay, otherwise HERMES_ERROR_?
  */
 int hermesPutc(port_ctx *ctx, uint16_t c);
-
-
-/** Trigger pairing. Resets the encrypted connection.
- * @param ctx Port identifier
- */
-void hermesPair(port_ctx *ctx);
-
-
-/** Trigger boilerplate.
- * @param ctx Port identifier
- * The received boilerplate comes out hermesAddPort's boiler function.
- */
-void hermesBoiler(port_ctx *ctx);
 
 
 /** Send a message
@@ -192,7 +180,7 @@ int hermesReKey(port_ctx *ctx, const uint8_t *key);
 
 /** Get number of bytes allowed in a message
  * @param ctx   Port identifier
- * @return      Capacity
+ * @return      Capacity (0 if not paired)
  */
 uint32_t hermesAvail(port_ctx *ctx);
 

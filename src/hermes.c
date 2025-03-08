@@ -57,25 +57,25 @@ static int testHMAC(port_ctx *ctx, const uint8_t *buf) {
 
 static int testKey(port_ctx *ctx, const uint8_t *key) {
     ctx->hInitFn((void *)&*ctx->rhCtx, &key[32], 16, HERMES_KEY_HASH_KEY);
-    for (int i=0; i < 48; i++) ctx->hPutcFn((void *)&*ctx->rhCtx, key[i]);
+    for (int i=0; i < 48; i++) ctx->hputcFn((void *)&*ctx->rhCtx, key[i]);
     ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
     return testHMAC(ctx, &key[48]);
 }
 
 static void SendByteU(port_ctx *ctx, uint8_t c) {
     if ((c & 0xFE) == HERMES_TAG_END) {         // HERMES_TAG_END or HERMES_ESCAPE
-        ctx->tcFn(HERMES_ESCAPE);
-        ctx->tcFn(c & 1);
+        ctx->ciphrFn(HERMES_ESCAPE);
+        ctx->ciphrFn(c & 1);
         ctx->counter++;
     } else {
-        ctx->tcFn(c);
+        ctx->ciphrFn(c);
     }
     ctx->counter++;
 }
 
 static void SendByte(port_ctx *ctx, uint8_t c) {
     SendByteU(ctx, c);
-    ctx->hPutcFn((void *)&*ctx->thCtx, c);      // add to HMAC
+    ctx->hputcFn((void *)&*ctx->thCtx, c);      // add to HMAC
 }
 
 static void SendN(port_ctx *ctx, const uint8_t *src, int length) {
@@ -102,8 +102,8 @@ static void SendHeader(port_ctx *ctx, int tag) {
 }
 
 static void SendEnd(port_ctx *ctx) {            // send END tag
-    ctx->tcFn(HERMES_TAG_END);
-    ctx->tcFn(HERMES_TAG_END);                  // repeat for redundancy
+    ctx->ciphrFn(HERMES_TAG_END);
+    ctx->ciphrFn(HERMES_TAG_END);                  // repeat for redundancy
     ctx->counter += 2;
 }
 
@@ -120,17 +120,17 @@ static void SendTxHash(port_ctx *ctx, int pad){ // finish authenticated packet
     uint8_t hash[HERMES_HMAC_LENGTH];
     ctx->hFinalFn((void *)&*ctx->thCtx, hash);
     ctx->hctrTx++;
-    ctx->tcFn(HERMES_ESCAPE);                   // HMAC marker
-    ctx->tcFn(HERMES_HMAC_TRIGGER);
+    ctx->ciphrFn(HERMES_ESCAPE);                   // HMAC marker
+    ctx->ciphrFn(HERMES_HMAC_TRIGGER);
     for (int i = 0; i < HERMES_HMAC_LENGTH; i++) SendByteU(ctx, hash[i]);
-    ctx->tcFn(HERMES_TAG_END);
+    ctx->ciphrFn(HERMES_TAG_END);
     ctx->counter += 3;
     while (pad && (ctx->counter & 0x1F)) {      // pad until next 32-byte boundary
         ctx->counter++;
-        ctx->tcFn(0);
+        ctx->ciphrFn(0);
     }
     ctx->counter++;
-    ctx->tcFn(HERMES_TAG_END);
+    ctx->ciphrFn(HERMES_TAG_END);
 }
 
 // Send: Tag[1], mIV[], cIV[], RXbufsize[2], HMAC[]
@@ -201,6 +201,14 @@ static void setPreamble(port_ctx *ctx, uint8_t tag, uint16_t length) {
     memcpy(&ctx->txbuf[1], &length, 2);
 }
 
+static void hermesPair(port_ctx *ctx) {
+    PRINTF("\n%s sending Pairing request, ", ctx->name);
+    ctx->rReady = 0;
+    ctx->tReady = 0;
+    SendHeader(ctx, HERMES_TAG_RESET);
+    SendEnd(ctx);
+}
+
 // -----------------------------------------------------------------------------
 // Public functions
 
@@ -213,12 +221,12 @@ void hermesNoPorts(void) {
 // Add a secure port
 int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, uint16_t txBlocks, hermes_rngFn rngFn,
-                   hermes_boilFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
+                   hermes_boilrFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *key, hermes_WrKeyFn WrKeyFn) {
     memset(ctx, 0, sizeof(port_ctx));
-    ctx->tmFn = plain;                          // plaintext output handler
-    ctx->tcFn = ciphr;                          // ciphertext output handler
-    ctx->boilFn = boiler;                       // boilerplate output handler
+    ctx->plainFn = plain;                       // plaintext output handler
+    ctx->ciphrFn = ciphr;                       // ciphertext output handler
+    ctx->boilrFn = boiler;                      // boilerplate output handler
     ctx->key = key;
     ctx->WrKeyFn = WrKeyFn;
     ctx->rngFn = rngFn;
@@ -236,7 +244,7 @@ int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char*
         ctx->rhCtx = Allocate(sizeof(siphash_ctx));
         ctx->thCtx = Allocate(sizeof(siphash_ctx));
         ctx->hInitFn  = sip_hmac_init_g;
-        ctx->hPutcFn  = sip_hmac_putc_g;
+        ctx->hputcFn  = sip_hmac_putc_g;
         ctx->hFinalFn = sip_hmac_final_g;
         ctx->cInitFn  = xc_crypt_init_g;
         ctx->cBlockFn = xc_crypt_block_g;
@@ -251,20 +259,6 @@ int hermesRAMused (int ports) {
 
 int hermesRAMunused (void) {
     return sizeof(uint32_t) * ALLOC_HEADROOM;
-}
-
-void hermesPair(port_ctx *ctx) {
-    PRINTF("\n%s sending Pairing request, ", ctx->name);
-    ctx->rReady = 0;
-    ctx->tReady = 0;
-    SendHeader(ctx, HERMES_TAG_RESET);
-    SendEnd(ctx);
-}
-
-void hermesBoiler(port_ctx *ctx) {
-    PRINTF("\n%s sending Boilerplate request, ", ctx->name);
-    SendHeader(ctx, HERMES_TAG_GET_BOILER);
-    SendEnd(ctx);
 }
 
 // Size of message available to accept
@@ -310,8 +304,13 @@ int hermesPutc(port_ctx *ctx, uint16_t c){
     if (c & 0xFF00) {
         switch (c) {
         case HERMES_CMD_RESET:
-reset:      hermesPair(ctx);
-            ctx->state = IDLE;
+reset:      ctx->state = IDLE;
+            hermesPair(ctx);
+            break;
+        case HERMES_CMD_GET_BOILER:
+            PRINTF("\n%s sending Boilerplate request, ", ctx->name);
+            SendHeader(ctx, HERMES_TAG_GET_BOILER);
+            SendEnd(ctx);
             break;
         default:
             r = HERMES_ERROR_UNKNOWN_CMD;
@@ -340,7 +339,7 @@ reset:      hermesPair(ctx);
         return 0;
     }
     // FSM ---------------------------------------------------------------------
-    ctx->hPutcFn((void *)&*ctx->rhCtx, c);      // add to hash
+    ctx->hputcFn((void *)&*ctx->rhCtx, c);      // add to hash
     int i = ctx->ridx;
     switch (ctx->state) {
     case IDLE:
@@ -352,7 +351,7 @@ reset:      hermesPair(ctx);
             ctx->tReady = 0;
         }
         ctx->hInitFn((void *)&*ctx->rhCtx, &ctx->key[32], HERMES_HMAC_LENGTH, ctx->hctrRx);
-        ctx->hPutcFn((void *)&*ctx->rhCtx, c);
+        ctx->hputcFn((void *)&*ctx->rhCtx, c);
         ctx->tag = c;
         ctx->MACed = 0;
         ctx->state = DISPATCH;
@@ -398,7 +397,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         }
         if (ended) {
             if ((i - 2) == ctx->rxbuf[0])
-            ctx->boilFn(ctx->rxbuf);
+            ctx->boilrFn(ctx->rxbuf);
         } else {
             ctx->rxbuf[ctx->ridx++] = c;
         }
@@ -475,7 +474,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                     return HERMES_ERROR_REKEYED;
                 }
                 setPreamble(ctx, (c + 1) & 0x7F, 0); // default ACK is empty
-                ctx->tmFn(&ctx->rxbuf[1], &ctx->txbuf[1], MAX_TX_LENGTH);
+                ctx->plainFn(&ctx->rxbuf[1], &ctx->txbuf[1], MAX_TX_LENGTH);
                 if (c != HERMES_MSG_NO_ACK) {
                     ctx->rAck = c;
                     ResendMessage(ctx, HERMES_TAG_ACK);
@@ -491,7 +490,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             PRINTF("\nReceived ACK=%d, length=%d; ", c, temp);
             ctx->rAck = c;
             ctx->retries = 0;
-            if (temp) ctx->tmFn(&ctx->rxbuf[1], NULL, 0);
+            if (temp) ctx->plainFn(&ctx->rxbuf[1], NULL, 0);
             break;
         case HERMES_TAG_NACK:
             if (badHMAC) {
