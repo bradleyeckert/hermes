@@ -38,20 +38,20 @@ The keyed hash includes a 64-bit counter that gets incremented after each hash, 
 
 ## Language dependencies
 
-* C99
-* Little-endian byte order
-* Hardware-specific functions in `*HW.c` file(s)
+- C99
+- Little-endian byte order
+- Hardware-specific functions in `*HW.c` file(s)
 
 Most of the byte-order dependency comes from using `memcpy` to move data to and from byte arrays. It could be replaced with a `MEMCPY` macro that substitutes a byte-reversing version of `memcpy` for big-endian targets.
 
 ## Hardware requirements
 
-* True random number generator
-* 32-bit CPU such as ARM or RISC-V
-* On-chip Flash memory for code and keys
-* UART
+- True random number generator
+- 32-bit CPU such as ARM or RISC-V
+- On-chip Flash memory for code and keys
+- UART
 
-The true random number generator is used to generate unique IVs, not keys, so the quality of its entropy is not critical. The idea is to avoid IV reuse. Even then, a reused IV is unlikely to be useful to an attacker since they would need the previous keystream, only obtainable from the plaintext (which they wouldn't have).
+The true random number generator is used to generate unique 128-bit IVs to avoid IV reuse. If an IV were to be reused, and the ciphertext has been logged (by sniffing UART traffic), the two messages could be XORed to leak data that may be useful. Since `hermes` typically uses short messages, it's unlikely to be a real hazard even if it happens. Still, the probably of it happening would be 2<sup>-64</sup> due to the Birthday Problem if the numbers are actually random.
 
 ## Pairing
 
@@ -75,7 +75,12 @@ The only plaintext sent over the port, besides message tags, is boilerplate info
 
 A host PC connected to a target MCU through a UART would keep track of keys for different targets. Depending on security requirements, the host PC can keep those keys on the cloud or in a file in encrypted format.
 
-`hermes` supports key rotation in `hermesHW.c`. This specialized function is platform-specific since it writes to Flash. Specifics are outside the scope of `hermes`, but keys should have a HMAC signed with a unique (to each device, but permanent) private key. The key set is 64 bytes total: 32 bytes for the encryption key, 16 bytes for the HMAC key, and 16 bytes for the key-set (optional) HMAC.
+`hermes` supports key rotation through `uint8_t* ctx->hermes_WrKeyFn(uint8_t* keyset)`. This specialized function is platform-specific since it writes to Flash. Specifics are outside the scope of `hermes`, but keys are expected to be signed with a 16-byte HMAC. The key set is 64 bytes total: 32 bytes for the encryption key, 16 bytes for the HMAC key, and 16 bytes for the key-set HMAC. The key-set is signed by the HMAC key and a master key `HERMES_KEY_HASH_KEY`. Such HMAC checking is not necessary. If an attacker could program a new key, it would only brick the port.
+
+The `int hermesReKey(port_ctx *ctx, const uint8_t *key)` function sends a message with new 64-byte key set, encrypted with the existing key set. Its HMAC is checked before the key set is programmed.
+
+The programming function could program multiple copies of the key set in case one is corrupted.
+If `hermesAddPort` reports a bad key, there is at least a backup.
 
 ## Boilerplate messages
 
