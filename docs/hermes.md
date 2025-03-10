@@ -51,7 +51,9 @@ Most of the byte-order dependency comes from using `memcpy` to move data to and 
 - On-chip Flash memory for code and keys
 - UART
 
-The true random number generator is used to generate unique 128-bit IVs to avoid IV reuse. If an IV were to be reused, and the ciphertext has been logged (by sniffing UART traffic), the two messages could be XORed to leak data that may be useful. Since `hermes` typically uses short messages, it's unlikely to be a real hazard even if it happens. Still, the probably of it happening would be 2<sup>-64</sup> due to the Birthday Problem if the numbers are actually random.
+The true random number generator is used to generate unique 128-bit IVs to avoid IV reuse. Each session starts with a random IV and lasts as long as the port is in use without any errors or resets.
+
+If an IV were to be reused, and the ciphertext has been logged (by sniffing UART traffic), the two sessions could be XORed to leak data that may be useful. The probably of it happening would be 2<sup>-64</sup> due to the Birthday Problem if the numbers are actually random. 2<sup>64</sup> sessions, at 1 session per hour, would be 600 billion years.
 
 ## Pairing
 
