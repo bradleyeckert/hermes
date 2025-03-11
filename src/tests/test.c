@@ -204,7 +204,7 @@ const uint8_t new_keys[80] = {
 Write the key and return the address of the key (it may have changed)
 Return NULL if key cannot be updated
 */
-#define KeySetLength 80     /* including the HMAC */
+#define KeySetLength 80     /* including the HMAC and admin password */
 
 uint8_t * UpdateKeySet(uint8_t* keyset) {
     memcpy(my_keys, keyset, KeySetLength);
