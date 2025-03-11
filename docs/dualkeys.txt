@@ -1,7 +1,0 @@
-There can be multiple pre-shared keys, each with different access privileges.
-This is used in Mifare DESfire cards.
-A successful pairing would first be done using key set 0.
-Further commands elevate access privilege (flip to a different key, like turning the knob on a VINSON box).
-The "admin access" command uses a 16-byte password.
-
-
