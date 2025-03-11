@@ -22,8 +22,9 @@
 #define HERMES_TAG_MESSAGE       0x17   /* signal an encrypted message */
 #define HERMES_TAG_IV_A          0x18   /* signal a 2-way IV init */
 #define HERMES_TAG_IV_B          0x19   /* signal a 1-way IV init */
-#define HERMES_TAG_ACK           0x1A   /* signal an ACK */
-#define HERMES_TAG_NACK          0x1B   /* signal a NACK */
+#define HERMES_TAG_ADMIN         0x1A
+#define HERMES_TAG_ACK           0x1B   /* signal an ACK */
+#define HERMES_TAG_NACK          0x1C   /* signal a NACK */
 #define HERMES_TAG_RAWTX         0x1F
 
 #define HERMES_MSG_NEW_KEY       0xAA
@@ -46,10 +47,6 @@
 #define HERMES_ERROR_MSG_NOT_SENT  11
 #define HERMES_ERROR_BUF_TOO_SMALL 12
 
-// Commands
-#define HERMES_CMD_RESET          256   /* Reset the FSM and re-pair the connection */
-#define HERMES_CMD_GET_BOILER     257   /* Request boilerplate */
-
 enum States {
   IDLE = 0,
   DISPATCH,
@@ -65,7 +62,7 @@ Bytes are received (as a function parameter) by processing them with an FSM.
 The hermesIn function returns an I/O result (0 if okay).
 
 The FSM is not full-duplex. If the FSM has wait for the UART transmitter
-(hermes_ciphrFn is hung), it may miss incoming bytes. This can be solved 3 ways:
+(hermes_ciphrFn is blocking), it may miss incoming bytes. This can be solved 3 ways:
 
 - Operate in half-duplex mode
 - Buffer the input with a FIFO
@@ -123,6 +120,7 @@ typedef struct
     // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
+    uint8_t admin;          // admin password was received
 } port_ctx;
 
 
@@ -140,12 +138,13 @@ void hermesNoPorts(void);
  * @param name        Name of port (for debugging)
  * @param rxBlocks    Size of receive buffer in 64-byte blocks
  * @param txBlocks    Size of transmit buffer in 64-byte blocks
+ * @param rngFn       Function to generate a random byte
  * @param boiler      Handler for received boilerplate (src, n)
  * @param plain       Handler for received data (src, n)
  * @param ciphr       Handler for char transmission (c)
- * @param enc_key     32-byte encryption key
- * @param hmac_key    16-byte HMAC key
- * @return    0 if okay, otherwise HERMES_ERROR_?
+ * @param key         32-byte encryption key, 16-byte HMAC key, and 16-byte HMAC of these
+ * @param WrKeyFn     Function to overwrite the key
+ * @return 0 if okay, otherwise HERMES_ERROR_?
  */
 int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, uint16_t txBlocks, hermes_rngFn rngFn,
@@ -155,10 +154,10 @@ int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char*
 
 /** Input raw ciphertext (or command), such as received from a UART
  * @param ctx Port identifier
- * @param c   Incoming byte or command (command if > 255)
- * @return    0 if okay, otherwise HERMES_ERROR_?
+ * @param c   Incoming byte
+ * @return 0 if okay, otherwise HERMES_ERROR_?
  */
-int hermesPutc(port_ctx *ctx, uint16_t c);
+int hermesPutc(port_ctx *ctx, uint8_t c);
 
 
 /** Send a message
@@ -172,7 +171,7 @@ int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes);
 
 
 /** Encrypt and send a re-key message, returns key
- * @param key   48-byte key set
+ * @param key   64-byte key set
  * @return      0 if okay, otherwise HERMES_ERROR_?
  */
 int hermesReKey(port_ctx *ctx, const uint8_t *key);
@@ -184,11 +183,26 @@ int hermesReKey(port_ctx *ctx, const uint8_t *key);
  */
 uint32_t hermesAvail(port_ctx *ctx);
 
+/** Send a pairing request
+ * @param ctx   Port identifier
+ */
+void hermesPair(port_ctx *ctx);
+
+/** Send a boilerplate request
+ * @param ctx   Port identifier
+ */
+void hermesBoilerReq(port_ctx *ctx);
+
+/** Send administrative password (encrypted)
+ * @param ctx   Port identifier
+ */
+void hermesAdmin(port_ctx *ctx);
+
 
 int hermesRAMused (int ports);
 int hermesRAMunused (void);
 
-int hermesFileNew(port_ctx *ctx);
+int  hermesFileNew (port_ctx *ctx);
 void hermesFileInit (port_ctx *ctx);
 void hermesFileFinal (port_ctx *ctx, int pad);
 void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len);

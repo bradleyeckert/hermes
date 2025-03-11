@@ -4,13 +4,7 @@ Cybersecurity for embedded systems has been getting a lot of scrutiny due to suc
 
 `hermes` achieves its small footprint by not trying to copy the SSL/TLS usage model that was made for the Internet. The usage model is closer to that of NFT cards like Mifare DESFire: many cards, few readers. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it. Likewise, one of the devices using Hermes is assumed to have an Internet connection for getting the required keys from a remote server or key vault. In other words, `hermes` uses a closed ecosystem.
 
-Manufacturers already operate a closed ecosystem for their products. `hermes` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. Pre-shared keys avoid PKE.
-
-The PKE used in SSL/TLS requires a X.509 certificate. An embedded system without Internet access would need a root certificate. A private root certificate can be considered similar to a master key because it acts as the foundational trust element within a private certificate authority (CA), essentially "signing" and validating all other certificates issued within that system, making it the key component for establishing trust within that closed network, just like a master key unlocks multiple doors in a building; its security is crucial as compromising it could compromise the entire trust structure within that private network. The discovery of the root certificate in one device would compromise all devices.
-
-The use of a "pinned key" (public key baked into the firmware) would move custody of the master (private) key to the server. If the server can be trusted with a master key, PKE is okay. But then if the system is two devices connected by a UART, a master key is hidden in one of the devices unless it has Internet. In that case, key management still falls onto a host so `hermes` does not implement PKE. 
-
-Without PKE, there is no spoofing. Key management relies on key escrow instead. Anti-spoofing relies on he security of the escrow.
+Manufacturers already operate a closed ecosystem for their products. `hermes` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. Pre-shared keys avoid PKE. Without PKE, there is no spoofing. Key management relies on key escrow instead. Anti-spoofing relies on the security of the escrow.
 
 ## AEAD
 
@@ -152,3 +146,24 @@ There is some fault tolerance, as illustrated by `test.c`. Messages are re-sent 
 `void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack);` is the workhorse of `hermes`. It accepts a plaintext message in the form of a u16-counted string. That means the first two bytes form a little-endian byte count and the rest is that many bytes.
 
 An ACK packet is returned to the sender to verify it was received. The ACK is encrypted and signed, as is NACK. A return message can be added to the ACK by placing a u16-counted response in `*ack`.
+
+## Legal considerations
+
+Cybersecurity is meant to protect devices and data from tampering, not give IoT manufacturers God-like powers.
+Unfortunately, the two overlap. Any application that uses Hermes should make private data inaccessible to the manufacturer. There are laws that address this:
+
+- The GDPR, applicable in Europe
+- The "Internet of Things Cybersecurity Improvement Act of 2020" in the US
+- The Cybersecurity Law of the People's Republic of China
+- Internet of Things (IoT) Security and Safety Framework in Japan
+- The Personal Information Protection and Electronic Documents Act (PIPEDA) in Canada
+
+### The key-escrow problem
+
+The use of pre-shared keys puts the onus of key secrecy on the manufacturer. Whoever is trusted with the family jewels must not allow copies of them to get out into the wild. Otherwise, the affected devices would need re-keying.
+
+In the context of UART encryption, PKE is an option if the public keys are whitelisted. For example, the device can be hardwired to accept only the host's public key. No other hosts can spoof the device. This requires the host to be ultra-secure with its private key, so it has the same secrecy problem.
+
+Pre-shared keys are generated at provisioning, which is the same time the device's MCU is loaded with firmware.
+A utility generates random keys and merges them into the firmware image just before JTAG programming. It also saves them to a database. Such activity must be done in a secure location that protects the keys.
+

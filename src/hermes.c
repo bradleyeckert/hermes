@@ -47,11 +47,7 @@ static void * Allocate(int bytes) {
 }
 
 static int testHMAC(port_ctx *ctx, const uint8_t *buf) {
-    for (int i = 0; i < HERMES_HMAC_LENGTH; i++) {
-        if (ctx->hmac[i] != buf[i]) {
-            return HERMES_ERROR_BAD_HMAC;
-        }
-    }
+    if (memcmp(ctx->hmac, buf, 16)) return HERMES_ERROR_BAD_HMAC;
     return 0;
 }
 
@@ -103,7 +99,7 @@ static void SendHeader(port_ctx *ctx, int tag) {
 
 static void SendEnd(port_ctx *ctx) {            // send END tag
     ctx->ciphrFn(HERMES_TAG_END);
-    ctx->ciphrFn(HERMES_TAG_END);                  // repeat for redundancy
+    ctx->ciphrFn(HERMES_TAG_END);               // repeat for redundancy
     ctx->counter += 2;
 }
 
@@ -201,14 +197,6 @@ static void setPreamble(port_ctx *ctx, uint8_t tag, uint16_t length) {
     memcpy(&ctx->txbuf[1], &length, 2);
 }
 
-static void hermesPair(port_ctx *ctx) {
-    PRINTF("\n%s sending Pairing request, ", ctx->name);
-    ctx->rReady = 0;
-    ctx->tReady = 0;
-    SendHeader(ctx, HERMES_TAG_RESET);
-    SendEnd(ctx);
-}
-
 // -----------------------------------------------------------------------------
 // Public functions
 
@@ -261,6 +249,30 @@ int hermesRAMunused (void) {
     return sizeof(uint32_t) * ALLOC_HEADROOM;
 }
 
+void hermesPair(port_ctx *ctx) {
+    PRINTF("\n%s sending Pairing request, ", ctx->name);
+    ctx->rReady = 0;
+    ctx->tReady = 0;
+    SendHeader(ctx, HERMES_TAG_RESET);
+    SendEnd(ctx);
+}
+
+void hermesBoilerReq(port_ctx *ctx) {
+    PRINTF("\n%s sending Boilerplate request, ", ctx->name);
+    SendHeader(ctx, HERMES_TAG_GET_BOILER);
+    SendEnd(ctx);
+}
+
+// Send: Tag[1], password[16], HMAC[]
+void hermesAdmin(port_ctx *ctx) {
+    uint8_t m[16];
+    PRINTF("\n%s sending Admin password, ", ctx->name);
+    SendHeader(ctx, HERMES_TAG_ADMIN);
+    ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->key[64], m, 0);
+    Send16(ctx, m);
+    SendTxHash(ctx, 0);
+}
+
 // Size of message available to accept
 uint32_t hermesAvail(port_ctx *ctx){
     if (!ctx->rReady) return 0;
@@ -297,26 +309,10 @@ int hermesReKey(port_ctx *ctx, const uint8_t *key){
 
 // -----------------------------------------------------------------------------
 // Receive char or command from input stream
-int hermesPutc(port_ctx *ctx, uint16_t c){
+int hermesPutc(port_ctx *ctx, uint8_t c){
     int r = 0;
-    int temp, badHMAC;
+    int temp;
     uint8_t *k;
-    if (c & 0xFF00) {
-        switch (c) {
-        case HERMES_CMD_RESET:
-reset:      ctx->state = IDLE;
-            hermesPair(ctx);
-            break;
-        case HERMES_CMD_GET_BOILER:
-            PRINTF("\n%s sending Boilerplate request, ", ctx->name);
-            SendHeader(ctx, HERMES_TAG_GET_BOILER);
-            SendEnd(ctx);
-            break;
-        default:
-            r = HERMES_ERROR_UNKNOWN_CMD;
-        }
-        return r;
-    }
     // Pack escape sequence to binary ------------------------------------------
     int ended = (c == HERMES_TAG_END);          // distinguish '12' from '10 02'
     if (ctx->escaped) {
@@ -329,7 +325,10 @@ reset:      ctx->state = IDLE;
                 ctx->hctrRx++;
                 ctx->MACed = 1;
                 return 0;
-            default: goto reset;
+            default:                            // embedded reset
+                ctx->state = IDLE;
+                hermesPair(ctx);
+                return 0;
         } else {
         c += HERMES_TAG_END;
         }
@@ -421,10 +420,10 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         ctx->state = IDLE;
         temp = i - HERMES_HMAC_LENGTH;
         c = ctx->rxbuf[0];                      // repurpose c
-        badHMAC = testHMAC(ctx, &ctx->rxbuf[temp]);
+        r = testHMAC(ctx, &ctx->rxbuf[temp]);   // 0 if okay, else bad HMAC
         PRINTF("\n%s received packet of length %d, tag %d, rxbuf[0]=0x%02X; ",
                ctx->name, temp, ctx->tag, c);
-        if (badHMAC) {
+        if (r) {
             PRINTf("\n**** Bad HMAC ****");
         }
         switch (ctx->tag) {
@@ -433,7 +432,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             ctx->hctrTx = 0;
         case HERMES_TAG_IV_B:
             ctx->rReady = 0;
-            if (badHMAC) break;
+            if (r) break;
             if (temp != (2 * HERMES_IV_LENGTH + ivADlength)) {
                 r = HERMES_ERROR_INVALID_LENGTH;
                 break;
@@ -450,8 +449,15 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                 r = SendIV(ctx, HERMES_TAG_IV_B);
             }
             break;
+        case HERMES_TAG_ADMIN:
+            ctx->admin = 0;
+            if (r) break;
+            DUMP(&ctx->key[64], 16); PRINTF("Expected Password");
+            DUMP(ctx->rxbuf, 16);    PRINTF("Actual Password");
+            if (memcmp(ctx->rxbuf, &ctx->key[64], 16) == 0) ctx->admin = 0x55;
+            break;
         case HERMES_TAG_MESSAGE:
-            if (badHMAC) {
+            if (r) {
                 if (c != HERMES_MSG_NO_ACK) {
                     PRINTf("\n%s is sending NACK, ", ctx->name);
                     ctx->retries++;
@@ -482,7 +488,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             }
             break;
         case HERMES_TAG_ACK:
-            if (badHMAC) {
+            if (r) {
                 PRINTF("DROPPED ACK, ");
                 break;
             }
@@ -493,7 +499,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             if (temp) ctx->plainFn(&ctx->rxbuf[1], NULL, 0);
             break;
         case HERMES_TAG_NACK:
-            if (badHMAC) {
+            if (r) {
                 PRINTF("DROPPED NACK, ");
                 break;
             }
@@ -587,6 +593,6 @@ int hermesStreamOut(port_ctx *ctx, const uint8_t *src, int len) {
         len -= 16;
     }
     hermesFileFinal(ctx, HERMES_END_UNPADDED);
-//    if (ctx->counter > 1023) return hermesStreamInit(ctx);
+    if (ctx->counter > 1023) return hermesStreamInit(ctx);
     return 0;
 }
