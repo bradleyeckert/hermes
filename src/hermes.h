@@ -15,17 +15,17 @@
 // Message tags
 #define HERMES_TAG_END           0x0A   /* signal end of message (don't change) */
 #define HERMES_ESCAPE            0x0B
-#define HERMES_HMAC_TRIGGER      0x02
+#define HERMES_HMAC_TRIGGER      0x02   /* 2nd char of escape sequence, triggers HMAC */
 #define HERMES_TAG_GET_BOILER    0x14   /* request boilerplate */
 #define HERMES_TAG_BOILERPLATE   0x15   /* boilerplate */
 #define HERMES_TAG_RESET         0x16   /* trigger a 2-way IV init */
 #define HERMES_TAG_MESSAGE       0x17   /* signal an encrypted message */
 #define HERMES_TAG_IV_A          0x18   /* signal a 2-way IV init */
 #define HERMES_TAG_IV_B          0x19   /* signal a 1-way IV init */
-#define HERMES_TAG_ADMIN         0x1A
+#define HERMES_TAG_ADMIN         0x1A   /* admin password (random 128-bit number) */
 #define HERMES_TAG_ACK           0x1B   /* signal an ACK */
 #define HERMES_TAG_NACK          0x1C   /* signal a NACK */
-#define HERMES_TAG_RAWTX         0x1F
+#define HERMES_TAG_RAWTX         0x1F   /* Raw non-repeatable AEAD message */
 
 #define HERMES_MSG_NEW_KEY       0xAA
 #define HERMES_LENGTH_UNKNOWN    0x80

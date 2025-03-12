@@ -49,7 +49,7 @@ timescale(4): timer ticks per second
 vendor(2): 0 \= generic  
 model(2): Target model ID  
 hw\_rev(2): Hardware revision  
-sw\_rev(2): Software revision
+sw\_rev(2): Software revision  
 timer(8): Real-time up-counter
 
 **Fn 1: Execute**

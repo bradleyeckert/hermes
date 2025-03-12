@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 #include "bci.h"
-#include "hermes.h"
 
 /*
 BCIhandler takes input from a buffer and outputs to a buffer.
@@ -30,14 +29,6 @@ void BCIhandler(vm_ctx ctx, const uint8_t *src, uint8_t *ret, uint16_t maxret) {
 }
 
 void BCIinitial(vm_ctx ctx) {
-}
-
-
-/*
-Boilerplate is used for ping and key lookup.
-*/
-static void BoilerHandlerBCI(const uint8_t *src) {
-    printf("\nReceived %d-byte boilerplate {%s}", src[0], &src[1]);
 }
 
 
