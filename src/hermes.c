@@ -34,6 +34,8 @@ void DUMP(const uint8_t *src, uint8_t len) {}
 
 #define BLOCK_SHIFT 6
 
+// Note: txbuf is bigger than needed, it should be 16 bytes
+
 // -----------------------------------------------------------------------------
 // Hermes
 
@@ -161,10 +163,9 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     SendN(ctx, mIV, HERMES_IV_LENGTH);
 #endif
     Send2(ctx, ctx->rBlocks);                   // RX buffer size[2]
-    SendTxHash(ctx, 0);                         // HMAC
+    SendTxHash(ctx, HERMES_END_UNPADDED);       // HMAC
     ctx->cInitFn((void *)&*ctx->tcCtx, ctx->key, cIV);
     ctx->tReady = 1;
-    ctx->tAck = 0;
     return 0;
 }
 
@@ -172,30 +173,6 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
 #define MAX_TX_LENGTH ((ctx->tBlocks << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE))
 #define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE))
 
-// Encrypt and send a message
-static int ResendMessage (port_ctx *ctx, uint8_t tag) {
-    uint8_t m[16];
-    uint16_t bytes;
-    ctx->retries = 0;
-    memcpy(&bytes, &ctx->txbuf[1], 2);
-    bytes += PREAMBLE_SIZE;                     // include preamble in message
-    PRINTF("\n%s sending MESSAGE[%d/%d], tAck=%d, rAck=%d, tag=%d; ",
-        ctx->name, bytes, ((bytes + 15) & ~0x0F), ctx->tAck, ctx->rAck, tag);
-    bytes = (bytes + 15) & ~0x0F;               // send whole blocks
-    SendHeader(ctx, tag);
-    for (int i = 0; i < bytes; i += 16) {       // encrypt blocks
-        PRINTF("\nEncrypting MESSAGE, block counter = %d; ", ctx->tcCtx->blox);
-        ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->txbuf[i], m, 0);
-        Send16(ctx, m);
-    }
-    SendTxHash(ctx, 0);
-    return 0;
-}
-
-static void setPreamble(port_ctx *ctx, uint8_t tag, uint16_t length) {
-    ctx->txbuf[0] = tag;
-    memcpy(&ctx->txbuf[1], &length, 2);
-}
 
 // -----------------------------------------------------------------------------
 // Public functions
@@ -270,41 +247,14 @@ void hermesAdmin(port_ctx *ctx) {
     SendHeader(ctx, HERMES_TAG_ADMIN);
     ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->key[64], m, 0);
     Send16(ctx, m);
-    SendTxHash(ctx, 0);
+    SendTxHash(ctx, HERMES_END_UNPADDED);
 }
 
 // Size of message available to accept
 uint32_t hermesAvail(port_ctx *ctx){
     if (!ctx->rReady) return 0;
     if (!ctx->tReady) return 0;
-    if (ctx->tAck == ctx->rAck) return 0;
-    uint32_t rxAvail = (ctx->avail << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE);
-    if      (rxAvail > MAX_TX_LENGTH) rxAvail = MAX_TX_LENGTH;
-    return rxAvail;
-}
-
-// Encrypt and send a message, buffering in case of transmission error.
-int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes){
-    int r = 0;
-    uint32_t len = bytes;
-    if (len > hermesAvail(ctx)) {
-        r = HERMES_ERROR_MSG_TRUNCATED;
-        len = hermesAvail(ctx);
-        PRINTF("\nTruncating message to %d bytes, ", len);
-    }
-    ctx->tAck = ctx->rAck;                      // tag as unacknowledged
-    setPreamble(ctx, ctx->tAck, len);
-    memcpy(&ctx->txbuf[PREAMBLE_SIZE], m, len); // and the input
-    return ResendMessage(ctx, HERMES_TAG_MESSAGE) | r;
-}
-
-// Encrypt and send a re-key message, buffering in case of transmission error.
-// ACK is returned if failure.
-int hermesReKey(port_ctx *ctx, const uint8_t *key){
-    if (hermesAvail(ctx) < 64) return HERMES_ERROR_MSG_NOT_SENT;
-    setPreamble(ctx, HERMES_MSG_NEW_KEY, 64);
-    memcpy(&ctx->txbuf[PREAMBLE_SIZE], key, 64);
-    return ResendMessage(ctx, HERMES_TAG_MESSAGE);
+    return (ctx->avail << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE);
 }
 
 // -----------------------------------------------------------------------------
@@ -343,7 +293,7 @@ int hermesPutc(port_ctx *ctx, uint8_t c){
     switch (ctx->state) {
     case IDLE:
         if (c < HERMES_TAG_GET_BOILER) break;   // limit range of valid tags
-        if (c > HERMES_TAG_NACK)       break;
+        if (c > HERMES_TAG_ADMIN)      break;
         if (c == HERMES_TAG_IV_A) {
             ctx->hctrRx = 0;                    // before initializing the hash
             ctx->rReady = 0;
@@ -441,7 +391,6 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             memcpy(&ctx->hctrTx, &ctx->rxbuf[HERMES_IV_LENGTH], 8);
             memcpy(&ctx->avail, &ctx->rxbuf[2*HERMES_IV_LENGTH], 2);
             ctx->rReady = 1;
-            ctx->rAck = 1;
             PRINTF("\nReceived IV, tag=%d; ", ctx->tag);
             DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Received HMAC hctrRx, ");
             DUMP((uint8_t*)&ctx->rxbuf[HERMES_IV_LENGTH], 16); PRINTF("Private cIV, ");
@@ -458,16 +407,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             break;
         case HERMES_TAG_MESSAGE:
             if (r) {
-                if (c != HERMES_MSG_NO_ACK) {
-                    PRINTf("\n%s is sending NACK, ", ctx->name);
-                    ctx->retries++;
-                    if (ctx->retries > 3) {
-                        hermesPair(ctx);
-                    }
-                    setPreamble(ctx, 0, 0);         // NACK is an empty message
-                    ResendMessage(ctx, HERMES_TAG_NACK);
-                    r = 0; // override "bad HMAC", sender gets a second chance
-                }
+                hermesPair(ctx);    // assume synchronization is lost
             } else {
                 memcpy (&temp, &ctx->rxbuf[1], 2);  // little-endian msg length
                 if (temp > MAX_RX_LENGTH) temp = MAX_RX_LENGTH;
@@ -479,32 +419,8 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                     if (k == NULL) return 0;        // no key
                     return HERMES_ERROR_REKEYED;
                 }
-                setPreamble(ctx, (c + 1) & 0x7F, 0); // default ACK is empty
-                ctx->plainFn(&ctx->rxbuf[1], &ctx->txbuf[1], MAX_TX_LENGTH);
-                if (c != HERMES_MSG_NO_ACK) {
-                    ctx->rAck = c;
-                    ResendMessage(ctx, HERMES_TAG_ACK);
-                }
+                ctx->plainFn(&ctx->rxbuf[1]);
             }
-            break;
-        case HERMES_TAG_ACK:
-            if (r) {
-                PRINTF("DROPPED ACK, ");
-                break;
-            }
-            memcpy(&temp, &ctx->rxbuf[1], 2);
-            PRINTF("\nReceived ACK=%d, length=%d; ", c, temp);
-            ctx->rAck = c;
-            ctx->retries = 0;
-            if (temp) ctx->plainFn(&ctx->rxbuf[1], NULL, 0);
-            break;
-        case HERMES_TAG_NACK:
-            if (r) {
-                PRINTF("DROPPED NACK, ");
-                break;
-            }
-            PRINTf("\n<<< Received NACK=%d; ", c);
-            ResendMessage(ctx, HERMES_TAG_MESSAGE);
             break;
         default: break;
         }
@@ -573,16 +489,16 @@ void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len) {
 // Do not guarantee delivery, just send and forget. This scheme assumes a host PC
 // with a large rxbuf, so it will get the data. Otherwise, the HMAC is dropped.
 
-int hermesStreamInit(port_ctx *ctx) {
+int hermesTxInit(port_ctx *ctx) {               // use if not paired
     return NewStream(ctx);
 }
 
-int hermesStreamOut(port_ctx *ctx, const uint8_t *src, int len) {
+static int hermesSendX(port_ctx *ctx, const uint8_t *src, int len, uint8_t type) {
     SendHeader(ctx, HERMES_TAG_MESSAGE);
     memset(ctx->txbuf, 0, 16);
     int i = 16 - PREAMBLE_SIZE;
     if (len < i ) i = len;
-    ctx->txbuf[0] = HERMES_MSG_NO_ACK;
+    ctx->txbuf[0] = type;
     memcpy(&ctx->txbuf[1], &len, 2);            // save the message length,
     PTsend16(ctx, src, len, PREAMBLE_SIZE);
     src += i;
@@ -593,6 +509,17 @@ int hermesStreamOut(port_ctx *ctx, const uint8_t *src, int len) {
         len -= 16;
     }
     hermesFileFinal(ctx, HERMES_END_UNPADDED);
-    if (ctx->counter > 1023) return hermesStreamInit(ctx);
     return 0;
+}
+
+int hermesSend(port_ctx *ctx, const uint8_t *src, int len) {
+    int r = hermesSendX(ctx, src, len, HERMES_MSG_NO_ACK);
+//  if (ctx->counter > 1023) return hermesTxInit(ctx);
+    return r;
+}
+
+// Encrypt and send a key set
+int hermesReKey(port_ctx *ctx, const uint8_t *key){
+    if (hermesAvail(ctx) < 80) return HERMES_ERROR_MSG_NOT_SENT;
+    return hermesSendX(ctx, key, 80, HERMES_MSG_NEW_KEY);
 }

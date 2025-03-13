@@ -13,6 +13,8 @@
 #define BCI_BYTESperINST        2
 #define BCI_BYTESperREGISTER    4
 
+
+
 struct Status_t {
     uint8_t base;           // Numeric base
     uint8_t state;          // 0 if interpreting, 1 if Compiling

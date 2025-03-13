@@ -23,8 +23,6 @@
 #define HERMES_TAG_IV_A          0x18   /* signal a 2-way IV init */
 #define HERMES_TAG_IV_B          0x19   /* signal a 1-way IV init */
 #define HERMES_TAG_ADMIN         0x1A   /* admin password (random 128-bit number) */
-#define HERMES_TAG_ACK           0x1B   /* signal an ACK */
-#define HERMES_TAG_NACK          0x1C   /* signal a NACK */
 #define HERMES_TAG_RAWTX         0x1F   /* Raw non-repeatable AEAD message */
 
 #define HERMES_MSG_NEW_KEY       0xAA
@@ -70,7 +68,7 @@ The FSM is not full-duplex. If the FSM has wait for the UART transmitter
 */
 
 typedef void (*hermes_ciphrFn)(uint8_t c);    // output raw ciphertext byte
-typedef void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack, uint16_t maxack);
+typedef void (*hermes_plainFn)(const uint8_t *src);
 typedef void (*hermes_boilrFn) (const uint8_t *src);
 typedef int  (*hermes_rngFn)  (void);
 typedef uint8_t* (*hermes_WrKeyFn)(uint8_t* keyset);
@@ -114,9 +112,7 @@ typedef struct
     uint8_t tag;            // received message type
     uint8_t escaped;        // assembling a 2-byte escape sequence
     uint8_t retries;        // count the NACKs
-    uint8_t rAck;           // receiver Ack
-    uint8_t tAck;           // transmitter Ack
-    uint8_t prevblock;      // previous message block
+    uint8_t prevblock;      // previous message block (for file out)
     // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
@@ -160,14 +156,19 @@ int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char*
 int hermesPutc(port_ctx *ctx, uint8_t c);
 
 
+/** Send an IV to enable hermesSend
+ * @param ctx   Port identifier
+ */
+int hermesTxInit(port_ctx *ctx);
+
+
 /** Send a message
  * @param ctx   Port identifier
  * @param m     Plaintext message to send
  * @param bytes Length of message in bytes
  * @return      0 if okay, otherwise HERMES_ERROR_?
- * Only send data if hermesAvail is not 0.
  */
-int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes);
+int hermesSend(port_ctx *ctx, const uint8_t *m, int bytes);
 
 
 /** Encrypt and send a re-key message, returns key
@@ -206,8 +207,5 @@ int  hermesFileNew (port_ctx *ctx);
 void hermesFileInit (port_ctx *ctx);
 void hermesFileFinal (port_ctx *ctx, int pad);
 void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len);
-
-int hermesStreamInit(port_ctx *ctx);
-int hermesStreamOut(port_ctx *ctx, const uint8_t *src, int len);
 
 #endif /* __HERMES_H__ */

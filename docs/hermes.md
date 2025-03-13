@@ -4,7 +4,11 @@ Cybersecurity for embedded systems has been getting a lot of scrutiny due to suc
 
 `hermes` achieves its small footprint by not trying to copy the SSL/TLS usage model that was made for the Internet. The usage model is closer to that of NFT cards like Mifare DESFire: many cards, few readers. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it. Likewise, one of the devices using Hermes is assumed to have an Internet connection for getting the required keys from a remote server or key vault. In other words, `hermes` uses a closed ecosystem.
 
-Manufacturers already operate a closed ecosystem for their products. `hermes` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. Pre-shared keys avoid PKE. Without PKE, there is no spoofing. Key management relies on key escrow instead. Anti-spoofing relies on the security of the escrow.
+Manufacturers already operate a closed ecosystem for their products. `hermes` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. Pre-shared keys avoid PKE. Without PKE, there is no spoofing.
+
+The tradeoff between pre-shared vs public keys is influenced by advanced Man-in-The-Middle (MiTM) spoofing [tools](https://slava-moskvin.medium.com/extracting-firmware-every-method-explained-e94aa094d0dd) that create self-signed HTTPS certificates. There are also tools to defeat SSL pinning. You have to wonder what's next.
+
+With pre-shared keys, an authorized user must securely log into the key server and download the key in order to pair a UART connection. Key management relies on key escrow instead. Anti-spoofing relies on the security of the escrow.
 
 ## AEAD
 
@@ -61,8 +65,6 @@ The IV is sent encrypted using a one-time-use random IV, which is in plaintext. 
 
 After the pairing handshake is finished, `hermesAvail(&Alice)` returns 0 if synchronization has been lost due to data corruption. The connection will have to be re-paired with `hermesPair(&Alice)`.
 
-Communication is ACKed, so it requires a successful IV setup in both directions.
-
 Pairing initializes the keystream. Messages use 16-byte chunks of that keystream. As long as a different IV is used for each pairing sequence, the keystream does not repeat.
 
 ## Key management
@@ -98,12 +100,6 @@ The AEAD format identifier packs bitfields as follows:
 
 A received boilerplate is sent to a handler function with src and length parameters. It is a counted string that is zero-terminated so there are multiple ways to get the length. The length should match the count.
 
-## Acknowledge handshake
-
-Each encrypted message elicits an ACK response. The ACK counters of each port stay synchronized when everything is operating normally.
-
-Errors are handled by re-transmitting messages that didn't get through, as shown in `test.c`.
-
 ## File streaming
 
 The same scheme used for messaging can be used for encrypting files. The port writes to the file with the transmit channel and reads from it with the receive channel.
@@ -126,7 +122,7 @@ File reading is outside the scope of Hermes. Messages can only be read from the 
 
 The buffer size is affected by the latency of USB-serial conversion. Supposing a 4ms round trip time (host to target to host), you probably want messages to amount to that span of time. At 1 MBPS, a UART can send 400 bytes in 4 ms. You would want 512- or 256-byte buffers.
 
-Rather than rely on handshaking, data can be streamed out of the UART as a file stream. It is authenticated after each block. Such one-way communication doesn't care about USB latency or whether there is anything connected to the port.
+Data can be streamed out of the UART as a file stream. It is authenticated after each block. Such one-way communication doesn't care about USB latency or whether there is anything connected to the port.
 
 In the WCH platform, `printf` is built on the `int _write(int fd, char *buf, int size)` primitive. Since `size` could be anything, but is usually not much, `printf` initializes by sending a boilerplate and nonce. Each `printf` uses a non-acknowledged send. When the number of bytes sent crosses a threshold, the boilerplate and nonce may be re-sent in case the terminal got lost. Each `printf` ( or `hermesStreamOut`) is one AEAD message. If the message is too big for the receive buffer the message will be lost, so make sure the receive buffer is bigger than `printf` will ever need.
 
@@ -141,11 +137,7 @@ Streams are byte-wise processed, with incoming bytes fed into a FSM one at a tim
 
 Underlying functions (those with various dependencies) are late-bound in the port_ctx struct to simplify reuse. There is no heap usage. Instead, `hermes` implements its own memory allocation. It rurns out that each port needs about 1KB for context and buffers.
 
-There is some fault tolerance, as illustrated by `test.c`. Messages are re-sent until they get through. The FSM is supposed to be immune to input fuzzing. If it gets faked out by bad data, it does not walk off the end of the input buffer. There should be a test to prove this, though.
-
-`void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack);` is the workhorse of `hermes`. It accepts a plaintext message in the form of a u16-counted string. That means the first two bytes form a little-endian byte count and the rest is that many bytes.
-
-An ACK packet is returned to the sender to verify it was received. The ACK is encrypted and signed, as is NACK. A return message can be added to the ACK by placing a u16-counted response in `*ack`.
+`void (*hermes_plainFn)(const uint8_t *src);` is the workhorse of `hermes`. It accepts a plaintext message in the form of a u16-counted string. That means the first two bytes form a little-endian byte count and the rest is that many bytes.
 
 ## Legal considerations
 

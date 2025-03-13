@@ -62,10 +62,8 @@ static void BobCiphertextOutput(uint8_t c) {
 /*
 Received-plaintest functions
 PlaintextHandler takes a u16-counted src string
-The u16-counted ack string has been set to default empty.
-As many as maxack bytes can be returned.
 */
-static void PlaintextHandler(const uint8_t *src, uint8_t *ack, uint16_t maxack) {
+static void PlaintextHandler(const uint8_t *src) {
     uint16_t length;
     memcpy (&length, src, 2);  // little-endian msg length
     printf("\nPlaintext {");
@@ -73,13 +71,6 @@ static void PlaintextHandler(const uint8_t *src, uint8_t *ack, uint16_t maxack) 
         putc(src[i + sizeof(uint16_t)], stdout);
     }
     printf("} ");
-    /*
-    if (ack) { // a return message can be sent
-        ack[0] = 5;
-        ack[1] = 0;
-        memcpy(&ack[2], "Hello", 5);
-    }
-    */
 }
 
 static void BoilerHandlerA(const uint8_t *src) {
@@ -138,18 +129,6 @@ int SendAlice(int msgID) {
     }
     int ior = hermesSend(&Alice, s, strlen((char*)s));
     if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
-    return elements;
-}
-
-int StreamAlice(int msgID) {
-    int elements = sizeof(AliceMessages) / sizeof(AliceMessages[0]);
-    if (msgID >= elements) msgID = elements - 1;
-    const uint8_t* s = AliceMessages[msgID];
-    if (!hermesAvail(&Alice)) {
-        hermesPair(&Alice);
-    }
-    int ior = hermesStreamOut(&Alice, s, strlen((char*)s));
-    if (ior) printf("\n<<<hermesStreamOut>>> returned error code %d ", ior);
     return elements;
 }
 
@@ -232,7 +211,7 @@ void makeKey(void) {        // printf a random key set, with HMAC
 }
 
 int main() {
-    int tests = 0x3FF;      // enable these tests...
+    int tests = 0x1FF;      // enable these tests...
 //    snoopy = 1;             // display the wire traffic
     hermesNoPorts();
     int ior = hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, 2, getc_RNG,
@@ -270,20 +249,14 @@ int main() {
         i = 0;
         do {j = SendBob(i++);} while (i != j);
     }
+    error_pacing = 1000000; // turn off error injection
     if (tests & 0x40) {
-        printf("\n\nAlice-to-Bob, no ACK, no error injection...");
-        error_pacing = 1000000;
-        i = 0;
-        hermesStreamInit(&Alice);
-        do {j = StreamAlice(i++);} while (i != j);
-    }
-    if (tests & 0x80) {
         printf("\nEnable admin mode =======================");
         printf("\nBefore = %x", Bob.admin);
         hermesAdmin(&Alice);
         printf("\nAfter = 0x%x", Bob.admin);
     }
-    if (tests & 0x100) {
+    if (tests & 0x80) {
         printf("\n\nRe-keying ===============================");
         i = hermesReKey(&Alice, new_keys);
         if (i) printf("\nError %d: %s, ", i, errorCode(i));
@@ -291,7 +264,7 @@ int main() {
     }
     printf("\nAlice sent %d bytes", Alice.counter);
     printf("\nBob sent %d bytes", Bob.counter);
-    if (tests & 0x200) {
+    if (tests & 0x100) {
         printf("\n\nTest write to demofile.bin ");
         Alice.ciphrFn = CharToFile;
         file = fopen("demofile.bin", "wb");

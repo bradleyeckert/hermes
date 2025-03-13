@@ -92,12 +92,12 @@ Write to a VM register if possible. If the VM supports it, special registers are
 
 | *Byte* | *Meaning* | *Parameters from BCI* |
 | :----- | :-------- | :-------------------- |
-| FFh | POR |  |
-| FEh | Ack |  |
-| FDh | Nack |  |
-| FCh | Command underflow |  |
-| FBh | Throw | *data(4)* |
-| FAh | Write data to log file | *length (1), data (length)* |
+| FFh    | POR       |  |
+| FEh    | Ack       |  |
+| FDh    | Nack      |  |
+| FCh    | Command underflow      |  |
+| FBh    | Throw                  | *data(4)* |
+| FAh    | Write data to log file | *length (1), data (length)* |
 
 Anything that isn’t an artifact is sent to stdout. Artifacts are numbered F8 to FFh, which are not used by UTF-8.
 
@@ -112,3 +112,63 @@ void BCIhandler(vm_ctx ctx, const uint8_t *src, uint8_t *ret, uint16_t maxret);
 ```
 
 Data inserted into the return buffer, by the function called by Fn1 "Execute word", appears before whatever is returned by Fn1. So, this user output is delineated by *ack* (FEh).
+
+# VM
+
+The BCI implements a VM that calls an underlying API (of C functions) for hardware access, etc. The VM interprets a negative *xt* as an API call. An API function can be invoked by a negative address in `call` or `jump`, or with a negative address popped off the return stack by `;`.
+
+| *Inst* | *Positive xt*      | *Negative xt*                  |
+| :----- | :----------------- | :----------------------------- |
+| *call* | Push PC, PC = *xt* | Run API fn *-xt*               |
+| *jump* | PC = *xt*          | Run API fn *-xt*, PC = R (pop) |
+| *;*    | PC = R (pop)       | Run API fn -R (pop)            |
+
+`BCIHW.c` contains the execution table and the `int BCIAPIcall(vm_ctx ctx, int xt)` function. `ctx` exposes the VM internals to the C API. The execution table must contain only trusted C functions. `xt` is the index into the execution table.
+
+Memory access functions are defined in `BCIHW.c` to access memories:
+
+```C
+int BCIVMdataRead (vm_ctx ctx, uint32_t *x);
+int BCIVMdataWrite(vm_ctx ctx, uint32_t x);
+int BCIVMcodeRead (vm_ctx ctx, uint16_t *x);
+```
+
+In each case, the return value is 0 if okay, a standard Forth [throw code](https://forth-standard.org/standard/exception) if not.
+
+## Block Storage
+
+Data in SPI NOR flash is put there by the MCU. The MCU should self-provision random keys for AEAD and use them to encrypt the data. The HMAC is 16-byte, data is 496-byte, and each 496-byte block is stored in a 512B flash page. A flat byte address in block space can be converted to a block number by dividing by 496 or multiplying by 8659208 and shifting right by 32.
+
+The C API implements block memory access. A block read means the MCU must have at least 4KB of RAM available for use by a block buffer. The block buffer is in data memory.
+
+A common use of NOR Flash is bitmap fonts. Each glyph is on the order of 32 bytes. Some blocks should not use encryption. The HMAC is still useful, as it digitally signs the plaintext data.
+
+## Data Memory
+
+Peripherals are not mapped to data space because that would not be a secure sandbox. Instead, they should be accessed through the C API. However, for development, `DEBUGMODE` bit 0 is set to enable access to peripherals to aid in deciphering the MCU reference manual. Bit 1 is set to enable access to code memory, which is normally unreadable. Production code would have `DEBUGMODE` set to 0.
+
+A 24-bit address space is split into 16 regions, each with 20-bit offset.
+The 4-bit index is into a table of 32-bit base addresses. Invalid table entries are 0xFFFFFFFF.
+The resulting re-mapping for a CH32V3x gives:
+
+| *Addr* | *Base Address* | *For* |
+| :----- | :------------- | :---- |
+| 000000 | DataMem  | Data Memory portion of SRAM  |
+| 100000 | CodeMem  | Code memory (read if enabled)|
+| 200000 | 08000000 | Code Flash absolute          |
+| 300000 | 1FFF8000 | System Flash absolute        |
+| 400000 | 20000000 | SRAM                         |
+| 500000 | 40000000 | Peripherals                  |
+| 700000 | 50000000 | Obscure Peripherals          |
+| 800000 | 60000000 | FSMC bank 1                  |
+| 900000 | 70000000 | FSMC bank 2                  |
+| A00000 | A0000000 | FSMC register                |
+| B00000 | E0000000 | Core private peripherals     |
+
+## Code Memory
+
+Code memory is a combination of internal and external Flash.
+Or maybe just internal Flash depending on the app size.
+
+Software updates are outside the scope of the BCI. Part of the SPI Flash is used to stage software updates. Upon startup, the boot code checks revision numbers and applies the update if necessary. The BCI does, however, have access to the staging area for delivery of (encrypted) software updates.
+
