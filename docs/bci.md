@@ -4,16 +4,14 @@ The BCI is a binary command interpreter that executes functions on a virtual mac
 The interface to the BCI is:
 
 ```C
-void BCIhandler(vm_ctx ctx, const uint8_t *src, uint8_t *ret, uint16_t maxret);
+void BCIhandler(vm_ctx ctx, const uint8_t *src);
 ```
 
-It processes a binary command `*src` and returns a binary response `*ret`.
+It processes a binary command `*src`.
 If necessary, it waits until the VM is ready. Its parameters are:
 
 - ctx, the VM context
 - src, a u16-counted command string
-- ret, a u16-counted response string
-- maxret, maximum length of response string
 
 The BCI is like a binary version of QUIT that returns throw codes. It interprets commands for memory access and execution, building on the [3-instruction Forth](https://pages.cs.wisc.edu/~bolo/shipyard/3ins4th.html) proposed by Frank Sergeant in 1991\. Since that time, computers have grown fast enough to simulate typical CPUs used in embedded systems. Rather than have different execution environments on host and target systems, Hermes duplicates them for binary compatibility. The dictionary is kept in the host for use by QUIT, but words can be executed on either side because the code images are kept in sync. Data space on the host side may similarly be synced to the target side, making it a clone of the target VM suitable for testing.
 

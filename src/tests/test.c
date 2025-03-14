@@ -61,14 +61,12 @@ static void BobCiphertextOutput(uint8_t c) {
 
 /*
 Received-plaintest functions
-PlaintextHandler takes a u16-counted src string
 */
-static void PlaintextHandler(const uint8_t *src) {
-    uint16_t length;
-    memcpy (&length, src, 2);  // little-endian msg length
+static void PlaintextHandler(const uint8_t *src, int length) {
     printf("\nPlaintext {");
     for (int i = 0; i < length; i++) {
-        putc(src[i + sizeof(uint16_t)], stdout);
+        putc(src[i], stdout);
+        //printf("%02x/", src[i]);
     }
     printf("} ");
 }
@@ -214,9 +212,9 @@ int main() {
     int tests = 0x1FF;      // enable these tests...
 //    snoopy = 1;             // display the wire traffic
     hermesNoPorts();
-    int ior = hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, 2, getc_RNG,
+    int ior = hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, getc_RNG,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, my_keys, UpdateKeySet);
-    if (!ior) ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, 2, getc_RNG,
+    if (!ior) ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, getc_RNG,
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, my_keys, UpdateKeySet);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));

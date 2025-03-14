@@ -5,7 +5,7 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_ALLOC_MEM_UINT32S  308   /* longs for context memory */
+#define HERMES_ALLOC_MEM_UINT32S  256   /* longs for context memory */
 #define HERMES_KEY_HASH_KEY      0ull   /* 8-byte keyset master key */
 #define HERMES_FILE_MESSAGE_SIZE    9   /* Log2 of file message block */
 
@@ -25,9 +25,9 @@
 #define HERMES_TAG_ADMIN         0x1A   /* admin password (random 128-bit number) */
 #define HERMES_TAG_RAWTX         0x1F   /* Raw non-repeatable AEAD message */
 
+#define HERMES_MSG_MESSAGE       0x00
 #define HERMES_MSG_NEW_KEY       0xAA
-#define HERMES_LENGTH_UNKNOWN    0x80
-#define HERMES_MSG_NO_ACK        0x81
+#define HERMES_LENGTH_UNKNOWN    0x01
 #define HERMES_END_UNPADDED         0
 #define HERMES_END_PADDED           1
 
@@ -68,7 +68,7 @@ The FSM is not full-duplex. If the FSM has wait for the UART transmitter
 */
 
 typedef void (*hermes_ciphrFn)(uint8_t c);    // output raw ciphertext byte
-typedef void (*hermes_plainFn)(const uint8_t *src);
+typedef void (*hermes_plainFn)(const uint8_t *src, int length);
 typedef void (*hermes_boilrFn) (const uint8_t *src);
 typedef int  (*hermes_rngFn)  (void);
 typedef uint8_t* (*hermes_WrKeyFn)(uint8_t* keyset);
@@ -100,12 +100,11 @@ typedef struct
     const uint8_t *boil;    // boilerplate
     const uint8_t *key;     // encryption/decryption key[32] and HMAC key[16]
     uint8_t *rxbuf;
-    uint8_t *txbuf;
+    uint8_t txbuf[16];
     enum States state;      // of the FSM
     uint8_t hmac[HERMES_HMAC_LENGTH];
     uint32_t counter;       // TX counter
     uint16_t rBlocks;       // size of rxbuf in blocks
-    uint16_t tBlocks;       // size of rxbuf in blocks
     uint16_t avail;         // max size of message you can send = avail*64 bytes
     uint16_t ridx;          // rxbuf index
     uint8_t MACed;          // HMAC triggered
@@ -133,7 +132,6 @@ void hermesNoPorts(void);
  * @param protocol    AEAD protocol used: 0 = xchacha20-siphash
  * @param name        Name of port (for debugging)
  * @param rxBlocks    Size of receive buffer in 64-byte blocks
- * @param txBlocks    Size of transmit buffer in 64-byte blocks
  * @param rngFn       Function to generate a random byte
  * @param boiler      Handler for received boilerplate (src, n)
  * @param plain       Handler for received data (src, n)
@@ -143,7 +141,7 @@ void hermesNoPorts(void);
  * @return 0 if okay, otherwise HERMES_ERROR_?
  */
 int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
-                   uint16_t rxBlocks, uint16_t txBlocks, hermes_rngFn rngFn,
+                   uint16_t rxBlocks, hermes_rngFn rngFn,
                    hermes_boilrFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
                    const uint8_t *key, hermes_WrKeyFn WrKeyFn);
 
