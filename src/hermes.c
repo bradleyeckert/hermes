@@ -91,6 +91,11 @@ static void Send16(port_ctx *ctx, const uint8_t *src) {
     SendN(ctx, src, 16);
 }
 
+static void SendTxBuf(port_ctx *ctx) {
+    ctx->cBlockFn((void *)&*ctx->tcCtx, ctx->txbuf, ctx->txbuf, 0);
+    Send16(ctx, ctx->txbuf);
+}
+
 #define ivADlength  2                           /* Associated data length */
 
 // Send: Tag[1]
@@ -169,7 +174,7 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     return 0;
 }
 
-#define PREAMBLE_SIZE 3
+#define PREAMBLE_SIZE 2
 #define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE))
 
 
@@ -415,8 +420,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                     return HERMES_ERROR_REKEYED;
                 }
                 i = ctx->rxbuf[temp - 1];       // remainder
-                if (temp > 20) temp--;          // more than 1 block
-                temp = temp + i - 16;           // trim padding
+                temp = temp + i - 17;           // trim padding
                 ctx->plainFn(&ctx->rxbuf[1], temp);
             }
             break;
@@ -460,17 +464,10 @@ void hermesFileFinal (port_ctx *ctx, int pad) { // end the one-way message
     SendTxHash(ctx, pad);
 }
 
-static void PTsend16(port_ctx *ctx, const uint8_t *src, int len, int offset) {
-    int remaining = 16 - offset;
-    if (remaining > len) remaining = len;
-    memcpy(&ctx->txbuf[offset], src, remaining);
-    ctx->cBlockFn((void *)&*ctx->tcCtx, ctx->txbuf, ctx->txbuf, 0);
-    Send16(ctx, ctx->txbuf);
-}
-
 void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len) {
     while (len > 0) {
-        PTsend16(ctx, src, len, 0);
+        memcpy(ctx->txbuf, src, 16);
+        SendTxBuf(ctx);
         src += 16;
         len -= 16;
         uint32_t p = ctx->counter + 2 * HERMES_HMAC_LENGTH + 3;
@@ -491,40 +488,41 @@ int hermesTxInit(port_ctx *ctx) {               // use if not paired
     return NewStream(ctx);
 }
 
-// Message format: type[1] msg[14+16N] pad[1] hmac[16] end
-// Factor this out into hermesSendInit, hermesSendChar, and hermesSendFinal
+void hermesSendInit(port_ctx *ctx, uint8_t type) {
+    SendHeader(ctx, HERMES_TAG_MESSAGE);
+    ctx->txbuf[0] = type;
+    ctx->txidx = 1;
+}
 
-static int hermesSendX(port_ctx *ctx, const uint8_t *src, int len) {
-    int head = 1;
-    while (len >= (16 - head)) {                // complete blocks
-        int used = 16 - head;
-        memcpy(&ctx->txbuf[head], src, used);
-        ctx->cBlockFn((void *)&*ctx->tcCtx, ctx->txbuf, ctx->txbuf, 0);
-        Send16(ctx, ctx->txbuf);
-        src += used;
-        len -= used;
-        head = 0;
-    }
-    ctx->txbuf[15] = len & 0xFF;
-    memcpy(&ctx->txbuf[head], src, len);        // ending block
-    ctx->cBlockFn((void *)&*ctx->tcCtx, ctx->txbuf, ctx->txbuf, 0);
-    Send16(ctx, ctx->txbuf);
+void hermesSendChar(port_ctx *ctx, uint8_t c) {
+    int i = ctx->txidx;
+    ctx->txbuf[i] = c;
+    i = (i + 1) & 0x0F;
+    ctx->txidx = i;
+    if (!i) SendTxBuf(ctx);
+}
+
+void hermesSendFinal(port_ctx *ctx) {
+    ctx->txbuf[15] = ctx->txidx;
+    SendTxBuf(ctx);
     SendTxHash(ctx, HERMES_END_UNPADDED);
-    return 0;
+}
+
+static void hermesSendMsg(port_ctx *ctx, const uint8_t *src, int len, int type) {
+    hermesSendInit(ctx, type);
+    while (len--) hermesSendChar(ctx, *src++);
+    hermesSendFinal(ctx);
 }
 
 int hermesSend(port_ctx *ctx, const uint8_t *src, int len) {
-    SendHeader(ctx, HERMES_TAG_MESSAGE);
-    ctx->txbuf[0] = HERMES_MSG_MESSAGE;
-    int r = hermesSendX(ctx, src, len);
+    hermesSendMsg(ctx, src, len, HERMES_MSG_MESSAGE);
 //  if (ctx->counter > 1023) return hermesTxInit(ctx);
-    return r;
+    return 0;
 }
 
 // Encrypt and send a key set
 int hermesReKey(port_ctx *ctx, const uint8_t *key){
     if (hermesAvail(ctx) < 80) return HERMES_ERROR_MSG_NOT_SENT;
-    SendHeader(ctx, HERMES_TAG_MESSAGE);
-    ctx->txbuf[0] = HERMES_MSG_NEW_KEY;
-    return hermesSendX(ctx, key, 80);
+    hermesSendMsg(ctx, key, 80, HERMES_MSG_NEW_KEY);
+    return 0;
 }

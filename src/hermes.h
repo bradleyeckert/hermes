@@ -110,7 +110,7 @@ typedef struct
     uint8_t MACed;          // HMAC triggered
     uint8_t tag;            // received message type
     uint8_t escaped;        // assembling a 2-byte escape sequence
-    uint8_t retries;        // count the NACKs
+    uint8_t txidx;          // byte index for char output
     uint8_t prevblock;      // previous message block (for file out)
     // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
@@ -167,6 +167,12 @@ int hermesTxInit(port_ctx *ctx);
  * @return      0 if okay, otherwise HERMES_ERROR_?
  */
 int hermesSend(port_ctx *ctx, const uint8_t *m, int bytes);
+
+// Underlying char primitives for hermesSend:
+
+void hermesSendInit(port_ctx *ctx, uint8_t type); // use HERMES_MSG_MESSAGE for type
+void hermesSendChar(port_ctx *ctx, uint8_t c);
+void hermesSendFinal(port_ctx *ctx);
 
 
 /** Encrypt and send a re-key message, returns key
