@@ -130,14 +130,14 @@ In the WCH platform, `printf` is built on the `int _write(int fd, char *buf, int
 
 Streams are byte-wise processed, with incoming bytes fed into a FSM one at a time and outgoing bytes fed to an output function. The basic flow is:
 
-- Incoming ciphertext --> `int hermesPutc(port_ctx *ctx, uint16_t c);`
-- `void (*hermes_plainFn)(const uint8_t *src, uint8_t *ack);` --> Plaintext to app
+- Incoming ciphertext --> `int hermesPutc(port_ctx *ctx, uint8_t c);`
+- `void (*hermes_plainFn)(const uint8_t *src, uint16_t length);` --> Plaintext to app
 - Plaintext from app --> `int hermesSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes);`
 - `void (*hermes_ciphrFn)(uint8_t c);` --> Outgoing ciphertext
 
 Underlying functions (those with various dependencies) are late-bound in the port_ctx struct to simplify reuse. There is no heap usage. Instead, `hermes` implements its own memory allocation. It rurns out that each port needs about 1KB for context and buffers.
 
-`void (*hermes_plainFn)(const uint8_t *src);` is the workhorse of `hermes`. It accepts a plaintext message in the form of a u16-counted string. That means the first two bytes form a little-endian byte count and the rest is that many bytes.
+`void (*hermes_plainFn)(const uint8_t *src, uint16_t length);` is the workhorse of `hermes`. It accepts a plaintext message. Any transmission errors will cause a "bad HMAC" failure, which is handled by dropping the packet and resetting the connection by exchanging new nonces.
 
 ## Legal considerations
 

@@ -4,14 +4,12 @@ The BCI is a binary command interpreter that executes functions on a virtual mac
 The interface to the BCI is:
 
 ```C
-void BCIhandler(vm_ctx ctx, const uint8_t *src);
+void BCIhandler(vm_ctx ctx, const uint8_t *src, int length);
 ```
 
 It processes a binary command `*src`.
-If necessary, it waits until the VM is ready. Its parameters are:
-
-- ctx, the VM context
-- src, a u16-counted command string
+If necessary, it waits until the VM is ready.
+Although the protocol may support multiple commands per input string, only one command is processed.
 
 The BCI is like a binary version of QUIT that returns throw codes. It interprets commands for memory access and execution, building on the [3-instruction Forth](https://pages.cs.wisc.edu/~bolo/shipyard/3ins4th.html) proposed by Frank Sergeant in 1991\. Since that time, computers have grown fast enough to simulate typical CPUs used in embedded systems. Rather than have different execution environments on host and target systems, Hermes duplicates them for binary compatibility. The dictionary is kept in the host for use by QUIT, but words can be executed on either side because the code images are kept in sync. Data space on the host side may similarly be synced to the target side, making it a clone of the target VM suitable for testing.
 
@@ -60,7 +58,17 @@ Execution starts with an empty stack and ends with an empty stack. The BCI:
 
 When a word is executed, if the xt is positive, it is a code address. Execution (or simulation) starts there and continues until the return stack is empty. If the xt is negative, the lower five bits are a single five-bit instruction to execute.
 
-If the VM does not have a stack pointer, the BCI first fills the stack with "empty" tokens such as 0x55555555. After execution, the "empty" token indicates that the stack is empty.
+If the VM does not have a stack pointer, the BCI first fills the stack with "empty" tokens such as 0x55555555. After execution, the "empty" token indicates that the stack is empty. 
+
+`Fn1` sets up the return message with `hermesSendInit`. Words like `emit` may append to the output with `hermesSendChar`. `Fn1` uses *mark* to mark the end of text returned by the function, sends parameters, and ends the response with `hermesSendFinal`. The API does not offer direct access to the UART, so encryption cannot be bypassed.
+
+```C
+void hermesSendInit(port_ctx *ctx, 0);
+void hermesSendChar(port_ctx *ctx, uint8_t c);
+void hermesSendFinal(port_ctx *ctx);
+```
+
+As long as the host has a nicely-sized rxbuf, it can handle long messages produced by executing `dump`, etc. The messages flowing over the UART are encrypted and authenticated.
 
 **Fn 2: Read from data space**
 

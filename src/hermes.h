@@ -5,45 +5,45 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_ALLOC_MEM_UINT32S  256   /* longs for context memory */
-#define HERMES_KEY_HASH_KEY      0ull   /* 8-byte keyset master key */
-#define HERMES_FILE_MESSAGE_SIZE    9   /* Log2 of file message block */
-
-#define HERMES_IV_LENGTH           16   /* Bytes in IV, should be 16 */
-#define HERMES_HMAC_LENGTH         16   /* Bytes in HMAC, may be 8 or 16 */
-
-// Message tags
-#define HERMES_TAG_END           0x0A   /* signal end of message (don't change) */
-#define HERMES_ESCAPE            0x0B
-#define HERMES_HMAC_TRIGGER      0x02   /* 2nd char of escape sequence, triggers HMAC */
-#define HERMES_TAG_GET_BOILER    0x14   /* request boilerplate */
-#define HERMES_TAG_BOILERPLATE   0x15   /* boilerplate */
-#define HERMES_TAG_RESET         0x16   /* trigger a 2-way IV init */
-#define HERMES_TAG_MESSAGE       0x17   /* signal an encrypted message */
-#define HERMES_TAG_IV_A          0x18   /* signal a 2-way IV init */
-#define HERMES_TAG_IV_B          0x19   /* signal a 1-way IV init */
-#define HERMES_TAG_ADMIN         0x1A   /* admin password (random 128-bit number) */
-#define HERMES_TAG_RAWTX         0x1F   /* Raw non-repeatable AEAD message */
-
-#define HERMES_MSG_MESSAGE       0x00
-#define HERMES_MSG_NEW_KEY       0xAA
-#define HERMES_LENGTH_UNKNOWN    0x01
-#define HERMES_END_UNPADDED         0
-#define HERMES_END_PADDED           1
+#define HERMES_ALLOC_MEM_UINT32S    256 /* longs for context memory */
+#define HERMES_KEY_HASH_KEY        0ull /* 8-byte keyset master key */
+#define HERMES_FILE_MESSAGE_SIZE      9 /* Log2 of file message block */
+                                   
+#define HERMES_IV_LENGTH             16 /* Bytes in IV, should be 16 */
+#define HERMES_HMAC_LENGTH           16 /* Bytes in HMAC, may be 8 or 16 */
+                                   
+// Message tags                    
+#define HERMES_TAG_END             0x0A /* signal end of message (don't change) */
+#define HERMES_ESCAPE              0x0B
+#define HERMES_HMAC_TRIGGER        0x02 /* 2nd char of escape sequence, triggers HMAC */
+#define HERMES_TAG_GET_BOILER      0x14 /* request boilerplate */
+#define HERMES_TAG_BOILERPLATE     0x15 /* boilerplate */
+#define HERMES_TAG_RESET           0x16 /* trigger a 2-way IV init */
+#define HERMES_TAG_MESSAGE         0x17 /* signal an encrypted message */
+#define HERMES_TAG_IV_A            0x18 /* signal a 2-way IV init */
+#define HERMES_TAG_IV_B            0x19 /* signal a 1-way IV init */
+#define HERMES_TAG_ADMIN           0x1A /* admin password (random 128-bit number) */
+#define HERMES_TAG_RAWTX           0x1F /* Raw non-repeatable AEAD message */
+                                   
+#define HERMES_MSG_MESSAGE         0x00
+#define HERMES_MSG_NEW_KEY         0xAA
+#define HERMES_LENGTH_UNKNOWN      0x01
+#define HERMES_END_UNPADDED           0
+#define HERMES_END_PADDED             1
 
 // Error tags
-#define HERMES_ERROR_INVALID_STATE  1   /* FSM reached an invalid state */
-#define HERMES_ERROR_UNKNOWN_CMD    2   /* Command not recognized */
-#define HERMES_ERROR_TRNG_FAILURE   3   /* Bad RNG value */
-#define HERMES_ERROR_MISSING_KEY    4
-#define HERMES_ERROR_BAD_HMAC       5
-#define HERMES_ERROR_INVALID_LENGTH 6
-#define HERMES_ERROR_LONG_BOILERPLT 7
-#define HERMES_ERROR_MSG_TRUNCATED  8
-#define HERMES_ERROR_OUT_OF_MEMORY  9
-#define HERMES_ERROR_REKEYED       10
-#define HERMES_ERROR_MSG_NOT_SENT  11
-#define HERMES_ERROR_BUF_TOO_SMALL 12
+#define HERMES_ERROR_INVALID_STATE    1 /* FSM reached an invalid state */
+#define HERMES_ERROR_UNKNOWN_CMD      2 /* Command not recognized */
+#define HERMES_ERROR_TRNG_FAILURE     3 /* Bad RNG value */
+#define HERMES_ERROR_MISSING_KEY      4
+#define HERMES_ERROR_BAD_HMAC         5
+#define HERMES_ERROR_INVALID_LENGTH   6
+#define HERMES_ERROR_LONG_BOILERPLT   7
+#define HERMES_ERROR_MSG_TRUNCATED    8
+#define HERMES_ERROR_OUT_OF_MEMORY    9
+#define HERMES_ERROR_REKEYED         10
+#define HERMES_ERROR_MSG_NOT_SENT    11
+#define HERMES_ERROR_BUF_TOO_SMALL   12
 
 enum States {
   IDLE = 0,
