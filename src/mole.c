@@ -1,5 +1,5 @@
 /*
-Original project: https://github.com/bradleyeckert/hermes
+Original project: https://github.com/bradleyeckert/mole
 AEAD-secured ports (for UARTs, etc.)
 */
 
@@ -7,9 +7,9 @@ AEAD-secured ports (for UARTs, etc.)
 #include <string.h>
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
-#include "hermes.h"
+#include "mole.h"
 
-#define ALLOC_HEADROOM (HERMES_ALLOC_MEM_UINT32S - allocated_uint32s)
+#define ALLOC_HEADROOM (MOLE_ALLOC_MEM_UINT32S - allocated_uint32s)
 
 #define TRACE 0
 
@@ -37,9 +37,9 @@ void DUMP(const uint8_t *src, uint8_t len) {}
 // Note: txbuf is bigger than needed, it should be 16 bytes
 
 // -----------------------------------------------------------------------------
-// Hermes
+// Mole
 
-static uint32_t context_memory[HERMES_ALLOC_MEM_UINT32S];
+static uint32_t context_memory[MOLE_ALLOC_MEM_UINT32S];
 static int allocated_uint32s;
 
 static void * Allocate(int bytes) {
@@ -49,20 +49,20 @@ static void * Allocate(int bytes) {
 }
 
 static int testHMAC(port_ctx *ctx, const uint8_t *buf) {
-    if (memcmp(ctx->hmac, buf, 16)) return HERMES_ERROR_BAD_HMAC;
+    if (memcmp(ctx->hmac, buf, 16)) return MOLE_ERROR_BAD_HMAC;
     return 0;
 }
 
 static int testKey(port_ctx *ctx, const uint8_t *key) {
-    ctx->hInitFn((void *)&*ctx->rhCtx, &key[32], 16, HERMES_KEY_HASH_KEY);
+    ctx->hInitFn((void *)&*ctx->rhCtx, &key[32], 16, MOLE_KEY_HASH_KEY);
     for (int i=0; i < 48; i++) ctx->hputcFn((void *)&*ctx->rhCtx, key[i]);
     ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
     return testHMAC(ctx, &key[48]);
 }
 
 static void SendByteU(port_ctx *ctx, uint8_t c) {
-    if ((c & 0xFE) == HERMES_TAG_END) {         // HERMES_TAG_END or HERMES_ESCAPE
-        ctx->ciphrFn(HERMES_ESCAPE);
+    if ((c & 0xFE) == MOLE_TAG_END) {         // MOLE_TAG_END or MOLE_ESCAPE
+        ctx->ciphrFn(MOLE_ESCAPE);
         ctx->ciphrFn(c & 1);
         ctx->counter++;
     } else {
@@ -100,19 +100,19 @@ static void SendTxBuf(port_ctx *ctx) {
 
 // Send: Tag[1]
 static void SendHeader(port_ctx *ctx, int tag) {
-    ctx->hInitFn((void *)&*ctx->thCtx, &ctx->key[32], HERMES_HMAC_LENGTH, ctx->hctrTx);
+    ctx->hInitFn((void *)&*ctx->thCtx, &ctx->key[32], MOLE_HMAC_LENGTH, ctx->hctrTx);
     SendByte(ctx, tag);                         // Header consists of a TAG byte,
 }
 
 static void SendEnd(port_ctx *ctx) {            // send END tag
-    ctx->ciphrFn(HERMES_TAG_END);
-    ctx->ciphrFn(HERMES_TAG_END);               // repeat for redundancy
+    ctx->ciphrFn(MOLE_TAG_END);
+    ctx->ciphrFn(MOLE_TAG_END);               // repeat for redundancy
     ctx->counter += 2;
 }
 
 static void SendBoiler(port_ctx *ctx) {         // send boilerplate packet
     uint8_t len = ctx->boil[0];
-    SendHeader(ctx, HERMES_TAG_BOILERPLATE);
+    SendHeader(ctx, MOLE_TAG_BOILERPLATE);
     for (int i = 0; i <= len; i++) SendByteU(ctx, ctx->boil[i]);
     SendByteU(ctx, 0);                          // zero-terminate to stringify
     SendEnd(ctx);
@@ -120,78 +120,78 @@ static void SendBoiler(port_ctx *ctx) {         // send boilerplate packet
 
 static void SendTxHash(port_ctx *ctx, int pad){ // finish authenticated packet
     DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("%s is sending HMAC with hctrTx, ", ctx->name);
-    uint8_t hash[HERMES_HMAC_LENGTH];
+    uint8_t hash[MOLE_HMAC_LENGTH];
     ctx->hFinalFn((void *)&*ctx->thCtx, hash);
     ctx->hctrTx++;
-    ctx->ciphrFn(HERMES_ESCAPE);                   // HMAC marker
-    ctx->ciphrFn(HERMES_HMAC_TRIGGER);
-    for (int i = 0; i < HERMES_HMAC_LENGTH; i++) SendByteU(ctx, hash[i]);
-    ctx->ciphrFn(HERMES_TAG_END);
+    ctx->ciphrFn(MOLE_ESCAPE);                   // HMAC marker
+    ctx->ciphrFn(MOLE_HMAC_TRIGGER);
+    for (int i = 0; i < MOLE_HMAC_LENGTH; i++) SendByteU(ctx, hash[i]);
+    ctx->ciphrFn(MOLE_TAG_END);
     ctx->counter += 3;
     while (pad && (ctx->counter & 0x1F)) {      // pad until next 32-byte boundary
         ctx->counter++;
         ctx->ciphrFn(0);
     }
     ctx->counter++;
-    ctx->ciphrFn(HERMES_TAG_END);
+    ctx->ciphrFn(MOLE_TAG_END);
 }
 
 // Send: Tag[1], mIV[], cIV[], RXbufsize[2], HMAC[]
 static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
-    uint8_t mIV[HERMES_IV_LENGTH];              // using these instead of txbuf
-    uint8_t cIV[HERMES_IV_LENGTH];              // to allow for re-transmission
+    uint8_t mIV[MOLE_IV_LENGTH];              // using these instead of txbuf
+    uint8_t cIV[MOLE_IV_LENGTH];              // to allow for re-transmission
     int r = 0;
     int c;
-    for (int i = 0; i < HERMES_IV_LENGTH ; i++) {
+    for (int i = 0; i < MOLE_IV_LENGTH ; i++) {
         c = ctx->rngFn();  r |= c;  mIV[i] = (uint8_t)c;
         c = ctx->rngFn();  r |= c;  cIV[i] = (uint8_t)c;
         if (r & 0x100) {
-            return HERMES_ERROR_TRNG_FAILURE;
+            return MOLE_ERROR_TRNG_FAILURE;
         }
     }
     memcpy(&ctx->hctrRx, cIV, 8);
     PRINTF("\n%s sending IV, tag=%d, ", ctx->name, tag);
     SendHeader(ctx, tag);                       // TAG (also resets HMAC)
-#if (HERMES_IV_LENGTH == 16)
+#if (MOLE_IV_LENGTH == 16)
     Send16(ctx, mIV);
 #else
-    SendN(ctx, mIV, HERMES_IV_LENGTH);
+    SendN(ctx, mIV, MOLE_IV_LENGTH);
 #endif
     DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("New %s.hctrRx",ctx->name);
     DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("Current %s.hctrTx",ctx->name);
-    DUMP((uint8_t*)mIV, HERMES_IV_LENGTH); PRINTF("used by %s to encrypt cIV\n",ctx->name);
+    DUMP((uint8_t*)mIV, MOLE_IV_LENGTH); PRINTF("used by %s to encrypt cIV\n",ctx->name);
     ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->key, mIV);
     ctx->cBlockFn((void *)&*ctx->tcCtx, cIV, mIV, 0);
-#if (HERMES_IV_LENGTH == 16)
+#if (MOLE_IV_LENGTH == 16)
     Send16(ctx, mIV);
 #else
-    SendN(ctx, mIV, HERMES_IV_LENGTH);
+    SendN(ctx, mIV, MOLE_IV_LENGTH);
 #endif
     Send2(ctx, ctx->rBlocks);                   // RX buffer size[2]
-    SendTxHash(ctx, HERMES_END_UNPADDED);       // HMAC
+    SendTxHash(ctx, MOLE_END_UNPADDED);       // HMAC
     ctx->cInitFn((void *)&*ctx->tcCtx, ctx->key, cIV);
     ctx->tReady = 1;
     return 0;
 }
 
 #define PREAMBLE_SIZE 2
-#define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE))
+#define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (MOLE_HMAC_LENGTH + PREAMBLE_SIZE))
 
 
 // -----------------------------------------------------------------------------
 // Public functions
 
-// Call this before setting up any hermes ports and when closing app.
-void hermesNoPorts(void) {
+// Call this before setting up any mole ports and when closing app.
+void moleNoPorts(void) {
 	memset(context_memory, 0, sizeof(context_memory));
 	allocated_uint32s = 0;
 }
 
 // Add a secure port
-int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
-                   uint16_t rxBlocks, hermes_rngFn rngFn,
-                   hermes_boilrFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
-                   const uint8_t *key, hermes_WrKeyFn WrKeyFn) {
+int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
+                   uint16_t rxBlocks, mole_rngFn rngFn,
+                   mole_boilrFn boiler, mole_plainFn plain, mole_ciphrFn ciphr,
+                   const uint8_t *key, mole_WrKeyFn WrKeyFn) {
     memset(ctx, 0, sizeof(port_ctx));
     ctx->plainFn = plain;                       // plaintext output handler
     ctx->ciphrFn = ciphr;                       // ciphertext output handler
@@ -203,7 +203,7 @@ int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char*
     ctx->name = name;                           // Zstring name for debugging
     ctx->rxbuf = Allocate(rxBlocks << BLOCK_SHIFT);
     ctx->rBlocks = rxBlocks;                    // block size (1<<BLOCK_SHIFT) bytes
-    if (rxBlocks < 2) return HERMES_ERROR_BUF_TOO_SMALL;
+    if (rxBlocks < 2) return MOLE_ERROR_BUF_TOO_SMALL;
     switch (protocol) {
     default: // 0
         ctx->rcCtx = Allocate(sizeof(xChaCha_ctx));
@@ -216,61 +216,61 @@ int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char*
         ctx->cInitFn  = xc_crypt_init_g;
         ctx->cBlockFn = xc_crypt_block_g;
     }
-    if (ALLOC_HEADROOM < 0) return HERMES_ERROR_OUT_OF_MEMORY;
+    if (ALLOC_HEADROOM < 0) return MOLE_ERROR_OUT_OF_MEMORY;
     return testKey(ctx, key);
 }
 
-int hermesRAMused (int ports) {
-    return sizeof(uint32_t) * HERMES_ALLOC_MEM_UINT32S + ports * sizeof(port_ctx);
+int moleRAMused (int ports) {
+    return sizeof(uint32_t) * MOLE_ALLOC_MEM_UINT32S + ports * sizeof(port_ctx);
 }
 
-int hermesRAMunused (void) {
+int moleRAMunused (void) {
     return sizeof(uint32_t) * ALLOC_HEADROOM;
 }
 
-void hermesPair(port_ctx *ctx) {
+void molePair(port_ctx *ctx) {
     PRINTF("\n%s sending Pairing request, ", ctx->name);
     ctx->rReady = 0;
     ctx->tReady = 0;
-    SendHeader(ctx, HERMES_TAG_RESET);
+    SendHeader(ctx, MOLE_TAG_RESET);
     SendEnd(ctx);
 }
 
-void hermesBoilerReq(port_ctx *ctx) {
+void moleBoilerReq(port_ctx *ctx) {
     PRINTF("\n%s sending Boilerplate request, ", ctx->name);
-    SendHeader(ctx, HERMES_TAG_GET_BOILER);
+    SendHeader(ctx, MOLE_TAG_GET_BOILER);
     SendEnd(ctx);
 }
 
 // Send: Tag[1], password[16], HMAC[]
-void hermesAdmin(port_ctx *ctx) {
+void moleAdmin(port_ctx *ctx) {
     uint8_t m[16];
     PRINTF("\n%s sending Admin password, ", ctx->name);
-    SendHeader(ctx, HERMES_TAG_ADMIN);
+    SendHeader(ctx, MOLE_TAG_ADMIN);
     ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->key[64], m, 0);
     Send16(ctx, m);
-    SendTxHash(ctx, HERMES_END_UNPADDED);
+    SendTxHash(ctx, MOLE_END_UNPADDED);
 }
 
 // Size of message available to accept
-uint32_t hermesAvail(port_ctx *ctx){
+uint32_t moleAvail(port_ctx *ctx){
     if (!ctx->rReady) return 0;
     if (!ctx->tReady) return 0;
-    return (ctx->avail << BLOCK_SHIFT) - (HERMES_HMAC_LENGTH + PREAMBLE_SIZE);
+    return (ctx->avail << BLOCK_SHIFT) - (MOLE_HMAC_LENGTH + PREAMBLE_SIZE);
 }
 
 // -----------------------------------------------------------------------------
 // Receive char or command from input stream
-int hermesPutc(port_ctx *ctx, uint8_t c){
+int molePutc(port_ctx *ctx, uint8_t c){
     int r = 0;
     int temp;
     uint8_t *k;
     // Pack escape sequence to binary ------------------------------------------
-    int ended = (c == HERMES_TAG_END);          // distinguish '12' from '10 02'
+    int ended = (c == MOLE_TAG_END);          // distinguish '12' from '10 02'
     if (ctx->escaped) {
         ctx->escaped = 0;
         if (c > 1) switch(c) {
-            case HERMES_HMAC_TRIGGER:
+            case MOLE_HMAC_TRIGGER:
                 DUMP((uint8_t*)&ctx->hctrRx, 8);
                 PRINTF("%s receiving HMAC with hctrRx, ", ctx->name);
                 ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
@@ -279,13 +279,13 @@ int hermesPutc(port_ctx *ctx, uint8_t c){
                 return 0;
             default:                            // embedded reset
                 ctx->state = IDLE;
-                hermesPair(ctx);
+                molePair(ctx);
                 return 0;
         } else {
-        c += HERMES_TAG_END;
+        c += MOLE_TAG_END;
         }
     }
-    else if (c == HERMES_ESCAPE) {
+    else if (c == MOLE_ESCAPE) {
         ctx->escaped = 1;
         return 0;
     }
@@ -294,14 +294,14 @@ int hermesPutc(port_ctx *ctx, uint8_t c){
     int i = ctx->ridx;
     switch (ctx->state) {
     case IDLE:
-        if (c < HERMES_TAG_GET_BOILER) break;   // limit range of valid tags
-        if (c > HERMES_TAG_ADMIN)      break;
-        if (c == HERMES_TAG_IV_A) {
+        if (c < MOLE_TAG_GET_BOILER) break;   // limit range of valid tags
+        if (c > MOLE_TAG_ADMIN)      break;
+        if (c == MOLE_TAG_IV_A) {
             ctx->hctrRx = 0;                    // before initializing the hash
             ctx->rReady = 0;
             ctx->tReady = 0;
         }
-        ctx->hInitFn((void *)&*ctx->rhCtx, &ctx->key[32], HERMES_HMAC_LENGTH, ctx->hctrRx);
+        ctx->hInitFn((void *)&*ctx->rhCtx, &ctx->key[32], MOLE_HMAC_LENGTH, ctx->hctrRx);
         ctx->hputcFn((void *)&*ctx->rhCtx, c);
         ctx->tag = c;
         ctx->MACed = 0;
@@ -313,20 +313,20 @@ int hermesPutc(port_ctx *ctx, uint8_t c){
         ctx->ridx = 1;
         ctx->state = GET_PAYLOAD;
         switch (ctx->tag) {
-        case HERMES_TAG_GET_BOILER:
+        case MOLE_TAG_GET_BOILER:
             SendBoiler(ctx);
             ctx->state = IDLE;
             break;
-        case HERMES_TAG_RESET:
+        case MOLE_TAG_RESET:
             ctx->hctrTx = 0;
             ctx->state = IDLE;
-            r = SendIV(ctx, HERMES_TAG_IV_A);
+            r = SendIV(ctx, MOLE_TAG_IV_A);
             break;
-        case HERMES_TAG_BOILERPLATE:
+        case MOLE_TAG_BOILERPLATE:
             ctx->state = GET_BOILER;
             break;
-        case HERMES_TAG_IV_A:
-        case HERMES_TAG_IV_B:
+        case MOLE_TAG_IV_A:
+        case MOLE_TAG_IV_B:
             ctx->state = GET_IV;
             break;
         }
@@ -335,7 +335,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         break;
     case GET_IV:
         ctx->rxbuf[ctx->ridx++] = c;
-        if (ctx->ridx == HERMES_IV_LENGTH) {
+        if (ctx->ridx == MOLE_IV_LENGTH) {
             PRINTF("\nSet temporary IV for decrypting the secret IV ");
             ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->key, ctx->rxbuf);
             ctx->state = GET_PAYLOAD;
@@ -343,7 +343,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         goto noend;
     case GET_BOILER:
         if (i == MAX_RX_LENGTH) {
-            r = HERMES_ERROR_LONG_BOILERPLT;
+            r = MOLE_ERROR_LONG_BOILERPLT;
             ended = 1;
         }
         if (ended) {
@@ -365,12 +365,12 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                 }
             } else {
                 ctx->state = HANG;
-                r = HERMES_ERROR_INVALID_LENGTH;
+                r = MOLE_ERROR_INVALID_LENGTH;
             }
             break;
         }
         ctx->state = IDLE;
-        temp = i - HERMES_HMAC_LENGTH;
+        temp = i - MOLE_HMAC_LENGTH;
         c = ctx->rxbuf[0];                      // repurpose c
         r = testHMAC(ctx, &ctx->rxbuf[temp]);   // 0 if okay, else bad HMAC
         PRINTF("\n%s received packet of length %d, tag %d, rxbuf[0]=0x%02X; ",
@@ -379,45 +379,45 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             PRINTf("\n**** Bad HMAC ****");
         }
         switch (ctx->tag) {
-        case HERMES_TAG_IV_A:
+        case MOLE_TAG_IV_A:
             ctx->tReady = 0;
             ctx->hctrTx = 0;
-        case HERMES_TAG_IV_B:
+        case MOLE_TAG_IV_B:
             ctx->rReady = 0;
             if (r) break;
-            if (temp != (2 * HERMES_IV_LENGTH + ivADlength)) {
-                r = HERMES_ERROR_INVALID_LENGTH;
+            if (temp != (2 * MOLE_IV_LENGTH + ivADlength)) {
+                r = MOLE_ERROR_INVALID_LENGTH;
                 break;
             }
-            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->key, &ctx->rxbuf[HERMES_IV_LENGTH]);
-            memcpy(&ctx->hctrTx, &ctx->rxbuf[HERMES_IV_LENGTH], 8);
-            memcpy(&ctx->avail, &ctx->rxbuf[2*HERMES_IV_LENGTH], 2);
+            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->key, &ctx->rxbuf[MOLE_IV_LENGTH]);
+            memcpy(&ctx->hctrTx, &ctx->rxbuf[MOLE_IV_LENGTH], 8);
+            memcpy(&ctx->avail, &ctx->rxbuf[2*MOLE_IV_LENGTH], 2);
             ctx->rReady = 1;
             PRINTF("\nReceived IV, tag=%d; ", ctx->tag);
             DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Received HMAC hctrRx, ");
-            DUMP((uint8_t*)&ctx->rxbuf[HERMES_IV_LENGTH], 16); PRINTF("Private cIV, ");
-            if (ctx->tag == HERMES_TAG_IV_A) {
-                r = SendIV(ctx, HERMES_TAG_IV_B);
+            DUMP((uint8_t*)&ctx->rxbuf[MOLE_IV_LENGTH], 16); PRINTF("Private cIV, ");
+            if (ctx->tag == MOLE_TAG_IV_A) {
+                r = SendIV(ctx, MOLE_TAG_IV_B);
             }
             break;
-        case HERMES_TAG_ADMIN:
+        case MOLE_TAG_ADMIN:
             ctx->admin = 0;
             if (r) break;
             DUMP(&ctx->key[64], 16); PRINTF("Expected Password");
             DUMP(ctx->rxbuf, 16);    PRINTF("Actual Password");
             if (memcmp(ctx->rxbuf, &ctx->key[64], 16) == 0) ctx->admin = 0x55;
             break;
-        case HERMES_TAG_MESSAGE:
+        case MOLE_TAG_MESSAGE:
             if (r) {
-                hermesPair(ctx);                // assume synchronization is lost
+                molePair(ctx);                // assume synchronization is lost
             } else {
-                if (c == HERMES_MSG_NEW_KEY) {
+                if (c == MOLE_MSG_NEW_KEY) {
                     temp = testKey(ctx, &ctx->rxbuf[1]);
                     if (temp) return temp;      // bad key
                     k = ctx->WrKeyFn(&ctx->rxbuf[1]);
                     c = 0;
                     if (k == NULL) return 0;    // no key
-                    return HERMES_ERROR_REKEYED;
+                    return MOLE_ERROR_REKEYED;
                 }
                 i = ctx->rxbuf[temp - 1];       // remainder
                 temp = temp + i - 17;           // trim padding
@@ -429,7 +429,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         break;
     default:
         ctx->state = IDLE;
-        r = HERMES_ERROR_INVALID_STATE;
+        r = MOLE_ERROR_INVALID_STATE;
     }
     return r;
 }
@@ -437,9 +437,9 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
 // -----------------------------------------------------------------------------
 // File output: Init to start a packet, Out to append blocks, Final to finish.
 
-void hermesFileInit (port_ctx *ctx) {
-    SendHeader(ctx, HERMES_TAG_RAWTX);
-    SendByte(ctx, HERMES_LENGTH_UNKNOWN);
+void moleFileInit (port_ctx *ctx) {
+    SendHeader(ctx, MOLE_TAG_RAWTX);
+    SendByte(ctx, MOLE_LENGTH_UNKNOWN);
 }
 
 static int NewStream(port_ctx *ctx) {
@@ -449,33 +449,33 @@ static int NewStream(port_ctx *ctx) {
     ctx->tReady = 0;
     ctx->hctrTx = 0;
     SendBoiler(ctx);                            // include ID information for keying
-    int r = SendIV(ctx, HERMES_TAG_IV_A);       // and an encrypted IV
+    int r = SendIV(ctx, MOLE_TAG_IV_A);       // and an encrypted IV
     return r;
 }
 
-int hermesFileNew(port_ctx *ctx) {              // start a new one-way message
+int moleFileNew(port_ctx *ctx) {              // start a new one-way message
     int r = NewStream(ctx);
     ctx->hctrTx = ctx->hctrRx + 1;
-    hermesFileInit(ctx);                        // get ready to write 16-byte blocks
+    moleFileInit(ctx);                        // get ready to write 16-byte blocks
     return r;
 }
 
-void hermesFileFinal (port_ctx *ctx, int pad) { // end the one-way message
+void moleFileFinal (port_ctx *ctx, int pad) { // end the one-way message
     SendTxHash(ctx, pad);
 }
 
-void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len) {
+void moleFileOut (port_ctx *ctx, const uint8_t *src, int len) {
     while (len > 0) {
         memcpy(ctx->txbuf, src, 16);
         SendTxBuf(ctx);
         src += 16;
         len -= 16;
-        uint32_t p = ctx->counter + 2 * HERMES_HMAC_LENGTH + 3;
-        uint8_t block = (uint8_t)(p >> HERMES_FILE_MESSAGE_SIZE);
+        uint32_t p = ctx->counter + 2 * MOLE_HMAC_LENGTH + 3;
+        uint8_t block = (uint8_t)(p >> MOLE_FILE_MESSAGE_SIZE);
         if (ctx->prevblock != block) {
             ctx->prevblock = block;
-            hermesFileFinal(ctx, HERMES_END_PADDED);
-            hermesFileInit(ctx);
+            moleFileFinal(ctx, MOLE_END_PADDED);
+            moleFileInit(ctx);
         }
     }
 }
@@ -484,17 +484,17 @@ void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len) {
 // Do not guarantee delivery, just send and forget. This scheme assumes a host PC
 // with a large rxbuf, so it will get the data. Otherwise, the HMAC is dropped.
 
-int hermesTxInit(port_ctx *ctx) {               // use if not paired
+int moleTxInit(port_ctx *ctx) {               // use if not paired
     return NewStream(ctx);
 }
 
-void hermesSendInit(port_ctx *ctx, uint8_t type) {
-    SendHeader(ctx, HERMES_TAG_MESSAGE);
+void moleSendInit(port_ctx *ctx, uint8_t type) {
+    SendHeader(ctx, MOLE_TAG_MESSAGE);
     ctx->txbuf[0] = type;
     ctx->txidx = 1;
 }
 
-void hermesSendChar(port_ctx *ctx, uint8_t c) {
+void moleSendChar(port_ctx *ctx, uint8_t c) {
     int i = ctx->txidx;
     ctx->txbuf[i] = c;
     i = (i + 1) & 0x0F;
@@ -502,27 +502,27 @@ void hermesSendChar(port_ctx *ctx, uint8_t c) {
     if (!i) SendTxBuf(ctx);
 }
 
-void hermesSendFinal(port_ctx *ctx) {
+void moleSendFinal(port_ctx *ctx) {
     ctx->txbuf[15] = ctx->txidx;
     SendTxBuf(ctx);
-    SendTxHash(ctx, HERMES_END_UNPADDED);
+    SendTxHash(ctx, MOLE_END_UNPADDED);
 }
 
-static void hermesSendMsg(port_ctx *ctx, const uint8_t *src, int len, int type) {
-    hermesSendInit(ctx, type);
-    while (len--) hermesSendChar(ctx, *src++);
-    hermesSendFinal(ctx);
+static void moleSendMsg(port_ctx *ctx, const uint8_t *src, int len, int type) {
+    moleSendInit(ctx, type);
+    while (len--) moleSendChar(ctx, *src++);
+    moleSendFinal(ctx);
 }
 
-int hermesSend(port_ctx *ctx, const uint8_t *src, int len) {
-    hermesSendMsg(ctx, src, len, HERMES_MSG_MESSAGE);
-//  if (ctx->counter > 1023) return hermesTxInit(ctx);
+int moleSend(port_ctx *ctx, const uint8_t *src, int len) {
+    moleSendMsg(ctx, src, len, MOLE_MSG_MESSAGE);
+//  if (ctx->counter > 1023) return moleTxInit(ctx);
     return 0;
 }
 
 // Encrypt and send a key set
-int hermesReKey(port_ctx *ctx, const uint8_t *key){
-    if (hermesAvail(ctx) < 80) return HERMES_ERROR_MSG_NOT_SENT;
-    hermesSendMsg(ctx, key, 80, HERMES_MSG_NEW_KEY);
+int moleReKey(port_ctx *ctx, const uint8_t *key){
+    if (moleAvail(ctx) < 80) return MOLE_ERROR_MSG_NOT_SENT;
+    moleSendMsg(ctx, key, 80, MOLE_MSG_NEW_KEY);
     return 0;
 }

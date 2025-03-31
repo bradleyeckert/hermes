@@ -1,49 +1,49 @@
-#ifndef __HERMES_H__
-#define __HERMES_H__
+#ifndef __MOLE_H__
+#define __MOLE_H__
 
 #include <stdint.h>
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define HERMES_ALLOC_MEM_UINT32S    256 /* longs for context memory */
-#define HERMES_KEY_HASH_KEY        0ull /* 8-byte keyset master key */
-#define HERMES_FILE_MESSAGE_SIZE      9 /* Log2 of file message block */
+#define MOLE_ALLOC_MEM_UINT32S    256 /* longs for context memory */
+#define MOLE_KEY_HASH_KEY        0ull /* 8-byte keyset master key */
+#define MOLE_FILE_MESSAGE_SIZE      9 /* Log2 of file message block */
                                    
-#define HERMES_IV_LENGTH             16 /* Bytes in IV, should be 16 */
-#define HERMES_HMAC_LENGTH           16 /* Bytes in HMAC, may be 8 or 16 */
+#define MOLE_IV_LENGTH             16 /* Bytes in IV, should be 16 */
+#define MOLE_HMAC_LENGTH           16 /* Bytes in HMAC, may be 8 or 16 */
                                    
 // Message tags                    
-#define HERMES_TAG_END             0x0A /* signal end of message (don't change) */
-#define HERMES_ESCAPE              0x0B
-#define HERMES_HMAC_TRIGGER        0x02 /* 2nd char of escape sequence, triggers HMAC */
-#define HERMES_TAG_GET_BOILER      0x14 /* request boilerplate */
-#define HERMES_TAG_BOILERPLATE     0x15 /* boilerplate */
-#define HERMES_TAG_RESET           0x16 /* trigger a 2-way IV init */
-#define HERMES_TAG_MESSAGE         0x17 /* signal an encrypted message */
-#define HERMES_TAG_IV_A            0x18 /* signal a 2-way IV init */
-#define HERMES_TAG_IV_B            0x19 /* signal a 1-way IV init */
-#define HERMES_TAG_ADMIN           0x1A /* admin password (random 128-bit number) */
-#define HERMES_TAG_RAWTX           0x1F /* Raw non-repeatable AEAD message */
+#define MOLE_TAG_END             0x0A /* signal end of message (don't change) */
+#define MOLE_ESCAPE              0x0B
+#define MOLE_HMAC_TRIGGER        0x02 /* 2nd char of escape sequence, triggers HMAC */
+#define MOLE_TAG_GET_BOILER      0x14 /* request boilerplate */
+#define MOLE_TAG_BOILERPLATE     0x15 /* boilerplate */
+#define MOLE_TAG_RESET           0x16 /* trigger a 2-way IV init */
+#define MOLE_TAG_MESSAGE         0x17 /* signal an encrypted message */
+#define MOLE_TAG_IV_A            0x18 /* signal a 2-way IV init */
+#define MOLE_TAG_IV_B            0x19 /* signal a 1-way IV init */
+#define MOLE_TAG_ADMIN           0x1A /* admin password (random 128-bit number) */
+#define MOLE_TAG_RAWTX           0x1F /* Raw non-repeatable AEAD message */
                                    
-#define HERMES_MSG_MESSAGE         0x00
-#define HERMES_MSG_NEW_KEY         0xAA
-#define HERMES_LENGTH_UNKNOWN      0x01
-#define HERMES_END_UNPADDED           0
-#define HERMES_END_PADDED             1
+#define MOLE_MSG_MESSAGE         0x00
+#define MOLE_MSG_NEW_KEY         0xAA
+#define MOLE_LENGTH_UNKNOWN      0x01
+#define MOLE_END_UNPADDED           0
+#define MOLE_END_PADDED             1
 
 // Error tags
-#define HERMES_ERROR_INVALID_STATE    1 /* FSM reached an invalid state */
-#define HERMES_ERROR_UNKNOWN_CMD      2 /* Command not recognized */
-#define HERMES_ERROR_TRNG_FAILURE     3 /* Bad RNG value */
-#define HERMES_ERROR_MISSING_KEY      4
-#define HERMES_ERROR_BAD_HMAC         5
-#define HERMES_ERROR_INVALID_LENGTH   6
-#define HERMES_ERROR_LONG_BOILERPLT   7
-#define HERMES_ERROR_MSG_TRUNCATED    8
-#define HERMES_ERROR_OUT_OF_MEMORY    9
-#define HERMES_ERROR_REKEYED         10
-#define HERMES_ERROR_MSG_NOT_SENT    11
-#define HERMES_ERROR_BUF_TOO_SMALL   12
+#define MOLE_ERROR_INVALID_STATE    1 /* FSM reached an invalid state */
+#define MOLE_ERROR_UNKNOWN_CMD      2 /* Command not recognized */
+#define MOLE_ERROR_TRNG_FAILURE     3 /* Bad RNG value */
+#define MOLE_ERROR_MISSING_KEY      4
+#define MOLE_ERROR_BAD_HMAC         5
+#define MOLE_ERROR_INVALID_LENGTH   6
+#define MOLE_ERROR_LONG_BOILERPLT   7
+#define MOLE_ERROR_MSG_TRUNCATED    8
+#define MOLE_ERROR_OUT_OF_MEMORY    9
+#define MOLE_ERROR_REKEYED         10
+#define MOLE_ERROR_MSG_NOT_SENT    11
+#define MOLE_ERROR_BUF_TOO_SMALL   12
 
 enum States {
   IDLE = 0,
@@ -57,21 +57,21 @@ enum States {
 /*
 Stream I/O is through functions. Bytes are transmitted by an output function.
 Bytes are received (as a function parameter) by processing them with an FSM.
-The hermesIn function returns an I/O result (0 if okay).
+The moleIn function returns an I/O result (0 if okay).
 
 The FSM is not full-duplex. If the FSM has wait for the UART transmitter
-(hermes_ciphrFn is blocking), it may miss incoming bytes. This can be solved 3 ways:
+(mole_ciphrFn is blocking), it may miss incoming bytes. This can be solved 3 ways:
 
 - Operate in half-duplex mode
 - Buffer the input with a FIFO
 - Buffer the output with a FIFO
 */
 
-typedef void (*hermes_ciphrFn)(uint8_t c);    // output raw ciphertext byte
-typedef void (*hermes_plainFn)(const uint8_t *src, int length);
-typedef void (*hermes_boilrFn) (const uint8_t *src);
-typedef int  (*hermes_rngFn)  (void);
-typedef uint8_t* (*hermes_WrKeyFn)(uint8_t* keyset);
+typedef void (*mole_ciphrFn)(uint8_t c);    // output raw ciphertext byte
+typedef void (*mole_plainFn)(const uint8_t *src, int length);
+typedef void (*mole_boilrFn) (const uint8_t *src);
+typedef int  (*mole_rngFn)  (void);
+typedef uint8_t* (*mole_WrKeyFn)(uint8_t* keyset);
 
 typedef int  (*hmac_initFn)(size_t *ctx, const uint8_t *key, int hsize, uint64_t ctr);
 typedef void (*hmac_putcFn)(size_t *ctx, uint8_t c);
@@ -85,11 +85,11 @@ typedef struct
 	siphash_ctx *rhCtx;     // receiver HMAC context
     xChaCha_ctx *tcCtx;     // transmitter encryption context
 	siphash_ctx *thCtx;	    // transmitter HMAC context
-    hermes_boilrFn boilrFn; // boilerplate handler (from hermesPutc)
-    hermes_plainFn plainFn; // plaintext handler (from hermesPutc)
-    hermes_ciphrFn ciphrFn; // ciphertext transmit function
-    hermes_WrKeyFn WrKeyFn; // rewrite key set for this port
-    hermes_rngFn rngFn;     // get a reasonably random byte
+    mole_boilrFn boilrFn; // boilerplate handler (from molePutc)
+    mole_plainFn plainFn; // plaintext handler (from molePutc)
+    mole_ciphrFn ciphrFn; // ciphertext transmit function
+    mole_WrKeyFn WrKeyFn; // rewrite key set for this port
+    mole_rngFn rngFn;     // get a reasonably random byte
     hmac_initFn hInitFn;    // HMAC initialization function
     hmac_putcFn hputcFn;    // HMAC putc function
     hmac_finalFn hFinalFn;  // HMAC finalization function
@@ -102,7 +102,7 @@ typedef struct
     uint8_t *rxbuf;
     uint8_t txbuf[16];
     enum States state;      // of the FSM
-    uint8_t hmac[HERMES_HMAC_LENGTH];
+    uint8_t hmac[MOLE_HMAC_LENGTH];
     uint32_t counter;       // TX counter
     uint16_t rBlocks;       // size of rxbuf in blocks
     uint16_t avail;         // max size of message you can send = avail*64 bytes
@@ -119,11 +119,11 @@ typedef struct
 } port_ctx;
 
 
-/** Clear the port list. Call before hermesAddPort.
+/** Clear the port list. Call before moleAddPort.
  *  May be used to wipe contexts before exiting an app so sensitive data
  *  doesn't hang around in memory.
  */
-void hermesNoPorts(void);
+void moleNoPorts(void);
 
 
 /** Append to the port list.
@@ -138,78 +138,78 @@ void hermesNoPorts(void);
  * @param ciphr       Handler for char transmission (c)
  * @param key         32-byte encryption key, 16-byte HMAC key, and 16-byte HMAC of these
  * @param WrKeyFn     Function to overwrite the key
- * @return 0 if okay, otherwise HERMES_ERROR_?
+ * @return 0 if okay, otherwise MOLE_ERROR_?
  */
-int hermesAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
-                   uint16_t rxBlocks, hermes_rngFn rngFn,
-                   hermes_boilrFn boiler, hermes_plainFn plain, hermes_ciphrFn ciphr,
-                   const uint8_t *key, hermes_WrKeyFn WrKeyFn);
+int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
+                   uint16_t rxBlocks, mole_rngFn rngFn,
+                   mole_boilrFn boiler, mole_plainFn plain, mole_ciphrFn ciphr,
+                   const uint8_t *key, mole_WrKeyFn WrKeyFn);
 
 
 /** Input raw ciphertext (or command), such as received from a UART
  * @param ctx Port identifier
  * @param c   Incoming byte
- * @return 0 if okay, otherwise HERMES_ERROR_?
+ * @return 0 if okay, otherwise MOLE_ERROR_?
  */
-int hermesPutc(port_ctx *ctx, uint8_t c);
+int molePutc(port_ctx *ctx, uint8_t c);
 
 
-/** Send an IV to enable hermesSend
+/** Send an IV to enable moleSend
  * @param ctx   Port identifier
  */
-int hermesTxInit(port_ctx *ctx);
+int moleTxInit(port_ctx *ctx);
 
 
 /** Send a message
  * @param ctx   Port identifier
  * @param m     Plaintext message to send
  * @param bytes Length of message in bytes
- * @return      0 if okay, otherwise HERMES_ERROR_?
+ * @return      0 if okay, otherwise MOLE_ERROR_?
  */
-int hermesSend(port_ctx *ctx, const uint8_t *m, int bytes);
+int moleSend(port_ctx *ctx, const uint8_t *m, int bytes);
 
-// Underlying char primitives for hermesSend:
+// Underlying char primitives for moleSend:
 
-void hermesSendInit(port_ctx *ctx, uint8_t type); // use HERMES_MSG_MESSAGE for type
-void hermesSendChar(port_ctx *ctx, uint8_t c);
-void hermesSendFinal(port_ctx *ctx);
+void moleSendInit(port_ctx *ctx, uint8_t type); // use MOLE_MSG_MESSAGE for type
+void moleSendChar(port_ctx *ctx, uint8_t c);
+void moleSendFinal(port_ctx *ctx);
 
 
 /** Encrypt and send a re-key message, returns key
  * @param key   64-byte key set
- * @return      0 if okay, otherwise HERMES_ERROR_?
+ * @return      0 if okay, otherwise MOLE_ERROR_?
  */
-int hermesReKey(port_ctx *ctx, const uint8_t *key);
+int moleReKey(port_ctx *ctx, const uint8_t *key);
 
 
 /** Get number of bytes allowed in a message
  * @param ctx   Port identifier
  * @return      Capacity (0 if not paired)
  */
-uint32_t hermesAvail(port_ctx *ctx);
+uint32_t moleAvail(port_ctx *ctx);
 
 /** Send a pairing request
  * @param ctx   Port identifier
  */
-void hermesPair(port_ctx *ctx);
+void molePair(port_ctx *ctx);
 
 /** Send a boilerplate request
  * @param ctx   Port identifier
  */
-void hermesBoilerReq(port_ctx *ctx);
+void moleBoilerReq(port_ctx *ctx);
 
 /** Send administrative password (encrypted)
  * @param ctx   Port identifier
  */
-void hermesAdmin(port_ctx *ctx);
+void moleAdmin(port_ctx *ctx);
 
 
-int hermesRAMused (int ports);
-int hermesRAMunused (void);
+int moleRAMused (int ports);
+int moleRAMunused (void);
 
-int  hermesFileNew (port_ctx *ctx);
-void hermesFileInit (port_ctx *ctx);
-void hermesFileFinal (port_ctx *ctx, int pad);
-void hermesFileOut (port_ctx *ctx, const uint8_t *src, int len);
+int  moleFileNew (port_ctx *ctx);
+void moleFileInit (port_ctx *ctx);
+void moleFileFinal (port_ctx *ctx, int pad);
+void moleFileOut (port_ctx *ctx, const uint8_t *src, int len);
 
-#endif /* __HERMES_H__ */
+#endif /* __MOLE_H__ */

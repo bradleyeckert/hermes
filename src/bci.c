@@ -1,63 +1,301 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <ctype.h>
 #include <stdio.h>
 #include "bci.h"
 #include "bciHW.h"
+
+#define TRACE 0
 
 /*
 BCIhandler takes input from a buffer and outputs to encrypted UART using these primitives:
 void hermesSendInit(port_ctx *ctx, uint8_t tag);
 void hermesSendChar(port_ctx *ctx, uint8_t c);
 void hermesSendFinal(port_ctx *ctx);
+which are late-bound in the port_ctx to decouple the BCI from its output stream.
 
-Since the VM has a context structure, these are late-bound in the context to allow stand-alone testing.
-
-There may be multiple commands in the input.
+Memory access is mediated by debugAccessFlags, which is 0 for production code.
+Memory sections assume a 24-bit address space, where address units are cells.
+String libraries in both C and Forth are overly simplistic, so if strings use
+bytes the custom string functions would adapt as needed. Cell addressing was
+always preferred by Chuck Moore.
 */
 
-void BCIhandler(vm_ctx *ctx, const uint8_t *src, uint16_t length) {
-    printf("\nPlaintext {");
-    for (int i = 0; i < length; i++) {
-        putc(src[i + sizeof(uint16_t)], stdout);
+static uint32_t ReadCell(vm_ctx *ctx, uint32_t addr) {
+    if (addr < DATASIZE) return ctx->DataMem[addr];
+    #if (BCI_DEBUG_ACCESS & BCI_ACCESS_CODESPACE)
+        uint32_t a = addr - DATASIZE;
+        if (a < CODESIZE) return ctx->CodeMem[a];
+        if ((addr & ~0x3FFFF) == 0x040000) return BCIVMcodeRead(ctx, addr);
+    #endif
+    #if (BCI_DEBUG_ACCESS & BCI_ACCESS_PERIPHERALS)
+        return BCIVMioRead(ctx, addr);
+    #endif
+    ctx->ior = BCI_IOR_INVALID_ADDRESS;
+    return 0;
+}
+
+static void WriteCell(vm_ctx *ctx, uint32_t addr, uint32_t x) {
+    if (addr < DATASIZE) {
+        ctx->DataMem[addr] = x;
+        return;
     }
-    printf("} ");
+    #if (BCI_DEBUG_ACCESS & BCI_ACCESS_CODESPACE)
+        uint32_t a = addr - DATASIZE;
+        if (a < CODESIZE) {
+            ctx->CodeMem[a] = x;
+            return;
+        }
+    #endif
+    ctx->ior = BCI_IOR_INVALID_ADDRESS;
+}
+
+// CRC32 based on ReadCell
+uint32_t crcCells(vm_ctx *ctx, uint32_t addr, uint32_t len) {
+    uint32_t crc = 0xFFFFFFFF;
+    while (len--) {
+        uint32_t x = ReadCell(ctx, addr++);
+        for (int i = 0; i < 4; i++) {
+            uint32_t byte = (x >> (8*i)) & 0xFF;     // unpack octets
+            crc = crc ^ byte;
+            for (int j = 7; j >= 0; j--) {
+                uint32_t mask = -(crc & 1);
+                crc = (crc >> 1) ^ (0xEDB88320 & mask);
+            }
+        }
+    }
+    return ~crc;
+}
+
+
+static void dupData(vm_ctx *ctx) {
+    ctx->DataStack[ctx->sp] = ctx->n;
+    ctx->sp = (ctx->sp + 1) & (STACKSIZE - 1);
+    ctx->n = ctx->t;
+}
+
+static void dropData(vm_ctx *ctx) {
+    ctx->t = ctx->n;
+    ctx->DataStack[ctx->sp] = BCI_EMPTY_STACK;
+    ctx->sp = (ctx->sp - 1) & (STACKSIZE - 1);
+    ctx->n = ctx->DataStack[ctx->sp];
+}
+
+static void pushReturn(vm_ctx *ctx, uint32_t x) {
+    ctx->ReturnStack[ctx->rp] = ctx->r;
+    ctx->rp = (ctx->rp + 1) & (STACKSIZE - 1);
+    ctx->r = x;
+}
+
+static uint32_t popReturn(vm_ctx *ctx) {
+    uint32_t r = ctx->r;
+    ctx->ReturnStack[ctx->rp] = BCI_EMPTY_STACK;
+    ctx->rp = (ctx->rp - 1) & (STACKSIZE - 1);
+    ctx->r = ctx->ReturnStack[ctx->rp];
+    return r;
 }
 
 void BCIinitial(vm_ctx *ctx) {
-    ctx->pc = 0;
+    memset(&ctx, 0, sizeof(vm_ctx));
+    ctx->status = BCI_STATUS_STOPPED;
 }
 
-// --------------------------------------------------------------
-// some test code to move out later
+static const uint8_t stackeffects[32] = {
+    0x00, 0x00, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02,
+    0x00, 0x00, 0x01, 0x01, 0x02, 0x02, 0x02, 0x12,
+    0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x01, 0x21, 0x02, 0x02, 0x02, 0x02
+};
 
-void mySendInit(void) {
-    printf("Init");
+//00		nop	 com	over dup  +	    xor	and	drop	..++----
+//08		@a	 @a+	@m	 cy	  !a	!a+	cy!	>r		..++----
+//10		swap unext	a	 b	  2*	2/ 		2/c		..++....
+//18		@b	 @b+	r@	 r>	  !b	!b+	a!	b!		..++----
+
+// Single-step the VM and set ctx->status to 1 if the PC goes out of bounds.
+// inst = 20-bit instruction. If 0, fetch inst from code memory.
+// ctx->ior should be 0 upon entering the function.
+
+int stepVM(vm_ctx *ctx, uint32_t inst){
+    uint32_t pc = ctx->pc;
+    if (inst == 0) inst = ctx->CodeMem[pc++];
+    if (inst & 0x80000) {
+        if (inst & 0x40000) pc = popReturn(ctx);
+        for (int i = 15; i >= 0; i -= 5) {
+            uint32_t t = ctx->t;
+            uint32_t n = ctx->n;
+            uint8_t slot = (inst >> i) & 0x1F;
+            uint8_t se = stackeffects[slot];
+            if (se & 1) dupData(ctx);
+            if (se & 2) dropData(ctx);
+            switch(slot) {
+                case 0x01: ctx->t = ~t;                         break;
+                case 0x02: ctx->t = n;                          break;
+                case 0x04: t += ctx->t;  ctx->t = t & VM_MASK;
+                           ctx->cy = (t >> VM_CELLBITS) & 1;    break;
+                case 0x05: ctx->t = t ^ n;                      break;
+                case 0x06: ctx->t = t & n;                      break;
+                case 0x08: ctx->memq = ReadCell(ctx, ctx->a);   break;
+                case 0x09: ctx->memq = ReadCell(ctx, ctx->a++); break;
+                case 0x0A: ctx->t = ctx->memq;                  break;
+                case 0x0B: ctx->t = ctx->cy;                    break;
+                case 0x0C: WriteCell(ctx, ctx->a, t);           break;
+                case 0x0D: WriteCell(ctx, ctx->a++, t);         break;
+                case 0x0E: ctx->cy = t;                         break;
+                case 0x0F: pushReturn(ctx, t);                  break;
+                case 0x10: ctx->t = n;  ctx->n = t;             break;
+                case 0x11: ctx->r--;
+                    if (ctx->r & VM_SIGN) {popReturn(ctx); break;}
+                    else {i = 15; continue;}
+                case 0x12: ctx->t = ctx->a;                     break;
+                case 0x13: ctx->t = ctx->b;                     break;
+                case 0x14: ctx->t = (t << 1);                   break;
+                case 0x15: ctx->t = (t & VM_SIGN) | (t >> 1);   break;
+                case 0x17: ctx->t = (ctx->cy << VM_CELLBITS) | (t >> 1);  break;
+                case 0x18: ctx->memq = ReadCell(ctx, ctx->b);   break;
+                case 0x19: ctx->memq = ReadCell(ctx, ctx->b++); break;
+                case 0x1A: ctx->t = ctx->r;                     break;
+                case 0x1B: ctx->t = popReturn(ctx);             break;
+                case 0x1C: WriteCell(ctx, ctx->b, t);           break;
+                case 0x1D: WriteCell(ctx, ctx->b++, t);         break;
+                case 0x1E: ctx->a = t;                          break;
+                case 0x1F: ctx->b = t;                          break;
+                default: break;
+            }
+        }
+    } else switch ((inst >> 16) & 7) {  // 0xxx...
+        case 0: pushReturn(ctx, pc);
+        case 1: pc = inst & 0xFFFF; break;
+        case 2:
+        case 3:
+        case 4: dupData(ctx);  ctx->t = (inst & 0xFFFF);
+        default: break;
+    }
+    ctx->pc = pc;
+    return ctx->ior;
 }
 
-void mySendChar(uint8_t c) {
-    printf("Putc");
+// Stream interface between BCI and VM
+
+static const uint8_t *cmd;
+static uint16_t len;
+
+static uint8_t get8(void) {
+    if (!len) return 0;
+    len--; return *cmd++;
 }
 
-void mySendFinal(void) {
-    printf("Final");
+static uint32_t get32(void) {           // 32-bit stream data is big-endian
+    uint32_t r = 0;
+    for (int i = 0; i < 4; i++) r = (r << 8) + get8();
+    return r;
 }
 
-void myInitial(vm_ctx *ctx) {
-    ctx->InitFn = mySendInit;           // output initialization function
-    ctx->putcFn = mySendChar;           // output putc function
-    ctx->FinalFn = mySendFinal;         // output finalization function
+static void put8(vm_ctx *ctx, uint8_t c) {
+    ctx->putcFn(c);
 }
 
+static void put32(vm_ctx *ctx, uint32_t x) {
+    uint8_t n = 4;
+    while (n--) ctx->putcFn(x >> (8*n));
+}
 
-vm_ctx me;
+// VM wrappers
 
-// Tests create a command string by using various functions to build the string.
-// The return
+static void waitUntilVMready(vm_ctx *ctx){
+    if (ctx->status == BCI_STATUS_STOPPED) return;
+    uint32_t limit = BCI_CYCLE_LIMIT;
+    while (limit--) {
+        if (stepVM(ctx, 0)) return;
+    }
+    BCIinitial(ctx);
+}
 
-int main() {
-//    int tests = 1;      // enable these tests...
-    myInitial(&me);
-    BCIinitial(&me);
-    return 0;
+static int SimXT(vm_ctx *ctx, uint32_t xt){
+    int ior;
+    if (xt & (1<<25)) ior = stepVM(ctx, (0x80 | (xt & 0x3F)) << 18);
+    else ior = stepVM(ctx, xt);
+    return ior;
+}
+
+/*
+Since the VM has a context structure, these are late-bound in the context to allow stand-alone testing.
+
+| 0 | Boilerplate      | | *n(1), data(n), ack(1)* |
+| 1 | Execute word (xt) | *base(1), state(1), n(1), stack(n\*4), xt(4)* | *mark(1), base(1), state(1), m(1), stack(m\*4), ack(1)* |
+| 2 | Read from memory | *n(1), addr(4)* | *n(1), data(n\*4), ack(1)* |
+| 3 | Get CRC of memory | *n(2), addr(4)* | *CRC32(4), ack(1)* |
+| 4 | Store to memory  | *n(1), addr(4), data(n\*4)* | *ack(1)* |
+| 5 | Read register    | *id(4)* | *data(4), ack(1)* |
+| 6 | Write register   | *id(4), data(4)* | *ack(1)* |
+uint32_t DataMem[DATASIZE];
+uint32_t CodeMem[CODESIZE];
+```C
+int BCIVMioRead (vm_ctx ctx, uint32_t addr, uint32_t *x);
+int BCIVMioWrite(vm_ctx ctx, uint32_t addr, uint32_t x);
+int BCIVMcodeRead (vm_ctx ctx, uint32_t addr, uint32_t *x);
+*/
+void BCIhandler(vm_ctx *ctx, const uint8_t *src, uint16_t length) {
+    ctx->InitFn();
+    cmd = src;  len = length;
+    uint32_t addr;
+    uint32_t x;
+    uint8_t n;
+    uint32_t ds[16];
+    ctx->ior = 0;
+    switch (get8()) {
+    case BCIFN_BOILER:
+        put8(ctx, 1);
+        put8(ctx, 0);                   // minimum boilerplate, format 0
+        put8(ctx, BCI_ACK);
+        break;
+    case BCIFN_READ:
+        n = get8();
+        addr = get32();
+        put8(ctx, n);
+        while (n--) put32(ctx, ReadCell(ctx, addr++));
+ack:    if (ctx->ior) put8(ctx, BCI_NACK);
+        else          put8(ctx, BCI_ACK);
+        break;
+    case BCIFN_WRITE:
+        n = get8();
+        addr = get32();
+        while (n--) {
+            x = get32();
+            WriteCell(ctx, addr++, x);
+        }
+        goto ack;
+    case BCIFN_EXECUTE:
+        waitUntilVMready(ctx);
+        WriteCell(ctx, 0, get32());     // packed status at data[0]
+        n = get8();
+        dupData(ctx);
+        ctx->t = BCI_EMPTY_STACK;
+        while (n--) {
+            dupData(ctx);
+            ctx->t = get32();
+        }
+        ctx->ior = SimXT(ctx, get32()); // xt
+        for (n = 0; n < 16; n++) {
+            x = ctx->t;
+            dropData(ctx);
+            ds[n] = x;
+            if (x == BCI_EMPTY_STACK) break;
+        }
+        put8(ctx, n);
+        while (n--) {
+            put32(ctx, ds[n]);
+        }
+        put32(ctx, ReadCell(ctx, 0));
+        goto ack;
+    case BCIFN_CRC:
+        addr = get32();
+        x = get32();
+        put32(ctx, crcCells(ctx, addr, x));
+        goto ack;
+    default:
+        put8(ctx, BCI_NACK);
+    }
+    ctx->FinalFn();
 }

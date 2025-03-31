@@ -27,7 +27,7 @@ BCI data is 32-bit regardless of the cell size of the VM.
 
 | *Fn* | *Description* | *Parameters to BCI* | *Parameters from BCI* |
 | :--- | :------------ | :------------------ | :-------------------- |
-| 0 | Boilerplate      | *m(1)* | *n(1), data(n), ack(1)* |
+| 0 | Boilerplate      | | *n(1), data(n), ack(1)* |
 | 1 | Execute word (xt) | *base(1), state(1), n(1), stack(n\*4), xt(4)* | *mark(1), base(1), state(1), m(1), stack(m\*4), ack(1)* |
 | 2 | Read from memory | *n(1), addr(4)* | *n(1), data(n\*4), ack(1)* |
 | 3 | Get CRC of memory | *n(2), addr(4)* | *CRC32(4), ack(1)* |
@@ -39,13 +39,13 @@ If a function fails, it will send a *nack* and the host will ignore the remainin
 
 **Fn 0: Read Boilerplate**
 
-Read m bytes of static boilerplate, clipped if m > length.  
+Read static boilerplate  
 f(1): format \= 0  
-timescale(4): timer ticks per second  
+hw\_rev(1): Hardware revision  
 vendor(2): 0 \= generic  
 model(2): Target model ID  
-hw\_rev(2): Hardware revision  
 sw\_rev(2): Software revision  
+timescale(4): timer ticks per second  
 timer(8): Real-time up-counter
 
 **Fn 1: Execute**
@@ -131,50 +131,81 @@ The BCI implements a VM that calls an underlying API (of C functions) for hardwa
 
 `BCIHW.c` contains the execution table and the `int BCIAPIcall(vm_ctx ctx, int xt)` function. `ctx` exposes the VM internals to the C API. The execution table must contain only trusted C functions. `xt` is the index into the execution table.
 
-Memory access functions are defined in `BCIHW.c` to access memories:
+Code and data memories are in `vm_ctx`. They are:
 
 ```C
-int BCIVMdataRead (vm_ctx ctx, uint32_t *x);
-int BCIVMdataWrite(vm_ctx ctx, uint32_t x);
-int BCIVMcodeRead (vm_ctx ctx, uint16_t *x);
+uint32_t DataMem[DATASIZE];
+uint32_t CodeMem[CODESIZE];
+```
+
+Memory access functions in `BCIHW.c` are called when the addresses are above `DATASIZE` or `CODESIZE` respectively.
+These are generally for I/O. In a multi-core system, `ctx` will be needed.
+
+```C
+int BCIVMioRead (vm_ctx ctx, uint32_t addr, uint32_t *x);
+int BCIVMioWrite(vm_ctx ctx, uint32_t addr, uint32_t x);
+int BCIVMcodeRead (vm_ctx ctx, uint32_t addr, uint32_t *x);
 ```
 
 In each case, the return value is 0 if okay, a standard Forth [throw code](https://forth-standard.org/standard/exception) if not.
 
+## The VM thread
+
+The VM function has multiple operating modes:
+
+- Single step, called by C code when it is waiting for I/O.
+- Run then stop, called by the BCI to execute a function.
+
+To prevent these two from conflicting (is the VM running or stopped?), the VM function itself outputs a trigger. When the BCI sees the trigger, the PC is invalid, or the VM is stopped, it may manipulate the stacks and execute a function. Otherwise, BCI spins (steps the VM). The BCI should have a time-out. If the VM is hung, the BCI should be able to stop the VM.
+
 ## Block Storage
 
-Data in SPI NOR flash is put there by the MCU. The MCU should self-provision random keys for AEAD and use them to encrypt the data. The HMAC is 16-byte, data is 496-byte, and each 496-byte block is stored in a 512B flash page. A flat byte address in block space can be converted to a block number by dividing by 496 or multiplying by 8659208 and shifting right by 32.
+Data in SPI NOR flash is handled in blocks. Each encrypted block uses 32 bytes for nonce and 16 bytes for HMAC, so a 1K block is 928 bytes of data and 48 bytes of overhead. Firmware stored in external SPI Flash is safe as long as the keys are private. Each firmware update gives the blocks new nonces.
 
-The C API implements block memory access. A block read means the MCU must have at least 4KB of RAM available for use by a block buffer. The block buffer is in data memory.
+The C API implements block memory access.
 
-A common use of NOR Flash is bitmap fonts. Each glyph is on the order of 32 bytes. Some blocks should not use encryption. The HMAC is still useful, as it digitally signs the plaintext data.
+A common use of NOR Flash is bitmap fonts. Each glyph is on the order of 32 bytes. Some blocks should not use encryption so that the entire block does not have to be read for a small part of the data to be used. The HMAC is still useful, as it digitally signs the plaintext data.
 
 ## Data Memory
 
 Peripherals are not mapped to data space because that would not be a secure sandbox. Instead, they should be accessed through the C API. However, for development, `DEBUGMODE` bit 0 is set to enable access to peripherals to aid in deciphering the MCU reference manual. Bit 1 is set to enable access to code memory, which is normally unreadable. Production code would have `DEBUGMODE` set to 0.
 
-A 24-bit address space is split into 16 regions, each with 20-bit offset.
-The 4-bit index is into a table of 32-bit base addresses. Invalid table entries are 0xFFFFFFFF.
+A 22-bit address space is split into 16 regions, each with 18-bit offset.
+The 4-bit index is into a table of 32-bit base addresses. Invalid table entries are 0.
 The resulting re-mapping for a CH32V3x gives:
 
-| *Addr* | *Base Address* | *For* |
-| :----- | :------------- | :---- |
-| 000000 | DataMem  | Data Memory portion of SRAM  |
-| 100000 | CodeMem  | Code memory (read if enabled)|
-| 200000 | 08000000 | Code Flash absolute          |
-| 300000 | 1FFF8000 | System Flash absolute        |
-| 400000 | 20000000 | SRAM                         |
-| 500000 | 40000000 | Peripherals                  |
-| 700000 | 50000000 | Obscure Peripherals          |
-| 800000 | 60000000 | FSMC bank 1                  |
-| 900000 | 70000000 | FSMC bank 2                  |
-| A00000 | A0000000 | FSMC register                |
-| B00000 | E0000000 | Core private peripherals     |
+| *Addr* | *Base Address* | *For* | *DEBUGMODE bit* |
+| :----- | :------------- | :---- | :-------------- |
+| 000000 | DataMem  | Data Memory portion of SRAM  |  |
+| 040000 | CodeMem  | Code memory (read if enabled)| 0 |
+| 080000 | 08000000 | Code Flash absolute      | 1 |
+| 0C0000 | 1FFF8000 | System Flash absolute    | 1 |
+| 100000 | 20000000 | SRAM                     | 1 |
+| 140000 | 40000000 | Peripherals              | 1 |
+| 180000 | 50000000 | Obscure Peripherals      | 1 |
+| 1C0000 | 60000000 | FSMC bank 1              | 1 |
+| 200000 | 70000000 | FSMC bank 2              | 1 |
+| 240000 | A0000000 | FSMC register            | 1 |
+| 280000 | E0000000 | Core private peripherals | 1 |
 
 ## Code Memory
 
-Code memory is a combination of internal and external Flash.
-Or maybe just internal Flash depending on the app size.
+Code memory is in SRAM. It is accessed directly by `bci.c`.
+A block of cache memory, loaded from the related NOR flash block, enables arbitrarily large code space.
+Cache misses cause the SRAM cache to be overwritten from SPI flash.
+Manual lookahead allows the software to spin or `pause` while the cache is filled by hardware.
+8K cycles of 8 MHz SCLK takes 1 ms, a long time to wait for a cache miss.
+Used properly, manual lookahead avoids blocking when the cache is missed.
+The API provides the cache status.
+`BCIVMcodeRead` in `bciHW.c` implements the cache as well as the API.
+`DEBUGMODE` bit 2 enables a "cache miss" message in the simulator.
+
+For each 1024-byte page of RAM, the last 48 bytes must be unused. They are reserved for AEAD overhead.
+The compiler enforces this rule.
+
+MCU internal flash is not used for code memory, with the rationale that a future SoC implementing the VM will not need internal flash, just a small amount of MTP for keys.
 
 Software updates are outside the scope of the BCI. Part of the SPI Flash is used to stage software updates. Upon startup, the boot code checks revision numbers and applies the update if necessary. The BCI does, however, have access to the staging area for delivery of (encrypted) software updates.
+
+# ISA
 

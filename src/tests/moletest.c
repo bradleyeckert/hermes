@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include "../hermes.h"
+#include "../mole.h"
 
 // -----------------------------------------------------------------------------
 // Some default values for testing
@@ -32,30 +32,30 @@ static uint8_t snoop(uint8_t c, char t) {
 
 static char* errorCode(int e) {
     switch(e) {
-    case HERMES_ERROR_INVALID_STATE:   return "Invalid state (should never happen)";
-    case HERMES_ERROR_UNKNOWN_CMD:     return "Unknown Command";
-    case HERMES_ERROR_TRNG_FAILURE:    return "TRNG failure - need to re-initialize";
-    case HERMES_ERROR_MISSING_KEY:     return "Missing key - maybe has NULL value";
-    case HERMES_ERROR_BAD_HMAC:        return "Invalid HMAC";
-    case HERMES_ERROR_INVALID_LENGTH:  return "Invalid packet length";
-    case HERMES_ERROR_LONG_BOILERPLT:  return "Boilerplate is too long";
-    case HERMES_ERROR_MSG_TRUNCATED:   return "Message was truncated";
-    case HERMES_ERROR_OUT_OF_MEMORY:   return "Insufficient HERMES_ALLOC_MEM_UINT32S";
-    case HERMES_ERROR_REKEYED:         return "Keys were changed";
-    case HERMES_ERROR_BUF_TOO_SMALL:   return "Buffer blocks must be at least 2";
+    case MOLE_ERROR_INVALID_STATE:   return "Invalid state (should never happen)";
+    case MOLE_ERROR_UNKNOWN_CMD:     return "Unknown Command";
+    case MOLE_ERROR_TRNG_FAILURE:    return "TRNG failure - need to re-initialize";
+    case MOLE_ERROR_MISSING_KEY:     return "Missing key - maybe has NULL value";
+    case MOLE_ERROR_BAD_HMAC:        return "Invalid HMAC";
+    case MOLE_ERROR_INVALID_LENGTH:  return "Invalid packet length";
+    case MOLE_ERROR_LONG_BOILERPLT:  return "Boilerplate is too long";
+    case MOLE_ERROR_MSG_TRUNCATED:   return "Message was truncated";
+    case MOLE_ERROR_OUT_OF_MEMORY:   return "Insufficient MOLE_ALLOC_MEM_UINT32S";
+    case MOLE_ERROR_REKEYED:         return "Keys were changed";
+    case MOLE_ERROR_BUF_TOO_SMALL:   return "Buffer blocks must be at least 2";
     default: return "unknown";
     }
 }
 
 static void AliceCiphertextOutput(uint8_t c) {
     c = snoop(c, '-');
-    int r = hermesPutc(&Bob, c);
+    int r = molePutc(&Bob, c);
     if (r) printf("\n*** Bob returned %d: %s, ", r, errorCode(r));
 }
 
 static void BobCiphertextOutput(uint8_t c) {
     c = snoop(c, '~');
-    int r = hermesPutc(&Alice, c);
+    int r = molePutc(&Alice, c);
     if (r) printf("\n*** Alice returned %d: %s, ", r, errorCode(r));
 }
 
@@ -122,11 +122,11 @@ int SendAlice(int msgID) {
     int elements = sizeof(AliceMessages) / sizeof(AliceMessages[0]);
     if (msgID >= elements) msgID = elements - 1;
     const uint8_t* s = AliceMessages[msgID];
-    if (!hermesAvail(&Alice)) {
-        hermesPair(&Alice);
+    if (!moleAvail(&Alice)) {
+        molePair(&Alice);
     }
-    int ior = hermesSend(&Alice, s, strlen((char*)s));
-    if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
+    int ior = moleSend(&Alice, s, strlen((char*)s));
+    if (ior) printf("\n<<<moleSend>>> returned error code %d ", ior);
     return elements;
 }
 
@@ -134,23 +134,23 @@ int SendBob(int msgID) {
     int elements = sizeof(BobMessages) / sizeof(BobMessages[0]);
     if (msgID >= elements) msgID = elements - 1;
     const uint8_t* s = BobMessages[msgID];
-    if (!hermesAvail(&Bob)) {
+    if (!moleAvail(&Bob)) {
         printf("\nRe-authenticating the connection");
-        hermesPair(&Bob);
+        molePair(&Bob);
     }
-    int ior = hermesSend(&Bob, s, strlen((char*)s));
-    if (ior) printf("\n<<<hermesSend>>> returned error code %d ", ior);
+    int ior = moleSend(&Bob, s, strlen((char*)s));
+    if (ior) printf("\n<<<moleSend>>> returned error code %d ", ior);
     return elements;
 }
 
 void PairAlice(void) {
     printf("\nAlice is pairing with keys ");
     for (int i=0; i<48; i++) printf("%02x", Alice.key[i]);
-    hermesPair(&Alice);
+    molePair(&Alice);
     if (Alice.hctrTx != Bob.hctrRx) printf("\nERROR: Alice cannot send to Bob");
     if (Bob.hctrTx != Alice.hctrRx) printf("\nERROR: Bob cannot send to Alice");
     printf("\nAvailability: Alice=%d, Bob=%d",
-           hermesAvail(&Alice), hermesAvail(&Bob));
+           moleAvail(&Alice), moleAvail(&Bob));
 }
 
 // File encryption
@@ -196,7 +196,7 @@ int getc_RNG(void) {
 void makeKey(void) {        // printf a random key set, with HMAC
     uint8_t k[KeySetLength];
     for (int i=0; i < KeySetLength; i++) k[i] = getc_RNG();
-    Alice.hInitFn((void*)Alice.rhCtx, &k[32], 16, HERMES_KEY_HASH_KEY);
+    Alice.hInitFn((void*)Alice.rhCtx, &k[32], 16, MOLE_KEY_HASH_KEY);
     for (int i=0; i < 48; i++) Alice.hputcFn((void*)Alice.rhCtx, k[i]);
     Alice.hFinalFn((void*)Alice.rhCtx, &k[48]); // [48..63] = MAC
     printf("uint8_t my_keys[%d] = {", KeySetLength);
@@ -211,32 +211,32 @@ void makeKey(void) {        // printf a random key set, with HMAC
 int main() {
     int tests = 0x1FF;      // enable these tests...
 //    snoopy = 1;             // display the wire traffic
-    hermesNoPorts();
-    int ior = hermesAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, getc_RNG,
+    moleNoPorts();
+    int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, getc_RNG,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, my_keys, UpdateKeySet);
-    if (!ior) ior = hermesAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, getc_RNG,
+    if (!ior) ior = moleAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, getc_RNG,
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, my_keys, UpdateKeySet);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));
-        printf("too small by %d ", -hermesRAMunused()/4);
+        printf("too small by %d ", -moleRAMunused()/4);
         printf("or the key has a bad HMAC");
         return ior;
     }
-    printf("Static context RAM usage: %d bytes per port\n", hermesRAMused(2)/2);
+    printf("Static context RAM usage: %d bytes per port\n", moleRAMused(2)/2);
     printf("context_memory has %d unused bytes (%d unused longs)\n",
-           hermesRAMunused(), hermesRAMunused()/4);
+           moleRAMunused(), moleRAMunused()/4);
     Alice.hctrTx = 0x3412; // ensure that re-pair resets these
     Alice.hctrRx = 0x341200;
     Bob.hctrTx = 0x785600;
     Bob.hctrRx = 0x7856;
-    if (tests & 0x01) hermesBoilerReq(&Alice);
-    if (tests & 0x02) hermesBoilerReq(&Bob);
+    if (tests & 0x01) moleBoilerReq(&Alice);
+    if (tests & 0x02) moleBoilerReq(&Bob);
     if (tests & 0x04) PairAlice();
     int i, j;
     if (tests & 0x08) {
         printf("\n\nAlice =================================");
-        hermesSend(&Alice, (uint8_t*)"*", 1);
-        hermesSend(&Alice, (uint8_t*)"*", 0);
+        moleSend(&Alice, (uint8_t*)"*", 1);
+        moleSend(&Alice, (uint8_t*)"*", 0);
     }
     if (tests & 0x10) {
         i = 0;
@@ -251,12 +251,12 @@ int main() {
     if (tests & 0x40) {
         printf("\nEnable admin mode =======================");
         printf("\nBefore = %x", Bob.admin);
-        hermesAdmin(&Alice);
+        moleAdmin(&Alice);
         printf("\nAfter = 0x%x", Bob.admin);
     }
     if (tests & 0x80) {
         printf("\n\nRe-keying ===============================");
-        i = hermesReKey(&Alice, new_keys);
+        i = moleReKey(&Alice, new_keys);
         if (i) printf("\nError %d: %s, ", i, errorCode(i));
         PairAlice();
     }
@@ -270,11 +270,11 @@ int main() {
             printf("\nError creating file!");
             return 1;
         }
-        hermesFileNew(&Alice);
+        moleFileNew(&Alice);
         for (int i = 0; i < 100; i++) {
-            hermesFileOut(&Alice, (uint8_t*)"ABCDEFGHIJKLMNOP", 16);
+            moleFileOut(&Alice, (uint8_t*)"ABCDEFGHIJKLMNOP", 16);
         }
-        hermesFileFinal(&Alice, 0);
+        moleFileFinal(&Alice, 0);
         fclose(file);
     }
 //    for (int i=0; i<5; i++) makeKey();

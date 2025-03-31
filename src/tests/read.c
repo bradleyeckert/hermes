@@ -15,7 +15,7 @@ const uint8_t my_encryption_key[] = {
 
 #define FILENAME "C:/Users/Brad/Documents/GitHub/hermes_CodeBlocks/HERMES/bin/Release/demofile.bin"
 
-// Decode a file
+// Decode a file created by hermestest.c
 
 xChaCha_ctx cCtx;   // encryption context
 siphash_ctx hCtx;   // HMAC context
