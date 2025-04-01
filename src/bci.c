@@ -97,7 +97,7 @@ static uint32_t popReturn(vm_ctx *ctx) {
 }
 
 void BCIinitial(vm_ctx *ctx) {
-    memset(&ctx, 0, sizeof(vm_ctx));
+    memset(ctx, 0, 64); // wipe the first 16 longs
     ctx->status = BCI_STATUS_STOPPED;
 }
 

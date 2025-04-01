@@ -109,6 +109,7 @@ void t(int tid, const char *s) {        // test function
 int main() {
     myInitial(&me);
     BCIinitial(&me);
+    printf("Starting tests\n");
     t( 0, "0x00 ==> 0x0100FE");                                             // boilerplate
     t( 1, "0x01, 0x02, 0x00000123 ==> 0x02, 0x00000000, 0x00000000, 0xFE"); // read memory
     t( 2, "0x02, 0x02, 0x00000123, 0x01234567, 0x01765432 ==> 0xFE");       // write memory

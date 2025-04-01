@@ -68,21 +68,21 @@ typedef void (*BCITXputcFn)(uint8_t c);
 typedef void (*BCITXfinalFn)(void);
 
 typedef struct
-{   char* name;                 // node name (for debugging)
-    uint32_t pc;                // program counter
+{   uint32_t pc;                // program counter
     uint32_t ir;                // instruction register
     uint32_t r, n, t, a, b, x, y;
-    uint32_t DataStack[STACKSIZE];
-    uint32_t ReturnStack[STACKSIZE];
-    uint32_t DataMem[DATASIZE];
     uint32_t memq;              // DataMem output bus (synchronous-read)
-    uint32_t CodeMem[CODESIZE];
     uint16_t upperBus;          // upper 16 bits of 32-bit I/O data
     int16_t ior;
     uint8_t sp, rp, status, cy;
+    uint32_t DataStack[STACKSIZE];
+    uint32_t ReturnStack[STACKSIZE];
+    uint32_t DataMem[DATASIZE];
+    uint32_t CodeMem[CODESIZE];
     BCITXinitFn InitFn;         // output initialization function
     BCITXputcFn putcFn;         // output putc function
     BCITXfinalFn FinalFn;       // output finalization function
+    char* name;                 // node name (for debugging)
 } vm_ctx;
 
 /** Step the VM
