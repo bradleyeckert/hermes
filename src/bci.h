@@ -10,9 +10,13 @@
 #define BCI_NACK                 253
 #define BCI_INPUT_UNDERFLOW      252
 
-#define VM_CELLBITS               20
+#define VM_CELLBITS               32
 #define VM_SIGN     (1 << (VM_CELLBITS - 1))
+#if (VM_CELLBITS == 32)
+#define VM_MASK           0xFFFFFFFF
+#else
 #define VM_MASK     ((1 << VM_CELLBITS) - 1)
+#endif
 
 #define VMO_NOP                 0x00
 #define VMO_INV                 0x01
@@ -69,7 +73,7 @@ typedef void (*BCITXfinalFn)(void);
 
 typedef struct
 {   uint32_t pc;                // program counter
-    uint32_t ir;                // instruction register
+    uint16_t ir;                // instruction register
     uint32_t r, n, t, a, b, x, y;
     uint32_t memq;              // DataMem output bus (synchronous-read)
     uint16_t upperBus;          // upper 16 bits of 32-bit I/O data
@@ -89,7 +93,7 @@ typedef struct
  * @param ctx VM identifier
  * @return 0 if okay, otherwise VM_ERROR_?
  */
-int BCIstepVM(vm_ctx *ctx, uint32_t inst);
+int BCIstepVM(vm_ctx *ctx, uint16_t inst);
 
 void BCIhandler(vm_ctx *ctx, const uint8_t *src, uint16_t length);
 void BCIinitial(vm_ctx *ctx);

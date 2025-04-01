@@ -2,11 +2,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
-#include <stdio.h>
 #include "bci.h"
 #include "bciHW.h"
 
-#define TRACE 0
+#define TRACE 1
 
 /*
 BCIhandler takes input from a buffer and outputs to encrypted UART using these primitives:
@@ -14,7 +13,26 @@ void hermesSendInit(port_ctx *ctx, uint8_t tag);
 void hermesSendChar(port_ctx *ctx, uint8_t c);
 void hermesSendFinal(port_ctx *ctx);
 which are late-bound in the port_ctx to decouple the BCI from its output stream.
+*/
 
+#if (TRACE)
+#include <stdio.h>
+void DUMP(const uint8_t *src, uint8_t len) {
+    if (TRACE) {
+        for (uint8_t i = 0; i < len; i++) {
+            if ((i % 33) == 0) printf("\n___");
+            printf("%02X ", src[i]);
+        }
+        printf("<- ");
+    }
+}
+#define PRINTF  if (TRACE) printf
+#else
+void DUMP(const uint8_t *src, uint8_t len) {}
+#define PRINTF(...) do { } while (0)
+#endif
+
+/*
 Memory access is mediated by debugAccessFlags, which is 0 for production code.
 Memory sections assume a 24-bit address space, where address units are cells.
 String libraries in both C and Forth are overly simplistic, so if strings use
@@ -23,6 +41,7 @@ always preferred by Chuck Moore.
 */
 
 static uint32_t ReadCell(vm_ctx *ctx, uint32_t addr) {
+    PRINTF("\nLoad [0x%x]", addr);
     if (addr < DATASIZE) return ctx->DataMem[addr];
     #if (BCI_DEBUG_ACCESS & BCI_ACCESS_CODESPACE)
         uint32_t a = addr - DATASIZE;
@@ -37,6 +56,7 @@ static uint32_t ReadCell(vm_ctx *ctx, uint32_t addr) {
 }
 
 static void WriteCell(vm_ctx *ctx, uint32_t addr, uint32_t x) {
+    PRINTF("\nStore [0x%x] = %d", addr, x);
     if (addr < DATASIZE) {
         ctx->DataMem[addr] = x;
         return;
@@ -53,6 +73,7 @@ static void WriteCell(vm_ctx *ctx, uint32_t addr, uint32_t x) {
 
 // CRC32 based on ReadCell
 uint32_t crcCells(vm_ctx *ctx, uint32_t addr, uint32_t len) {
+    PRINTF("\nCRC [0x%x], %d cells", addr, len);
     uint32_t crc = 0xFFFFFFFF;
     while (len--) {
         uint32_t x = ReadCell(ctx, addr++);
@@ -117,20 +138,28 @@ static const uint8_t stackeffects[32] = {
 // inst = 20-bit instruction. If 0, fetch inst from code memory.
 // ctx->ior should be 0 upon entering the function.
 
-int stepVM(vm_ctx *ctx, uint32_t inst){
+int stepVM(vm_ctx *ctx, uint16_t inst){
+    PRINTF("\nstepVM inst=0x%x", inst);
     uint32_t pc = ctx->pc;
+#if (VM_CELLBITS == 32)
+    uint64_t ud;
+#endif
     if (inst == 0) inst = ctx->CodeMem[pc++];
-    if (inst & 0x80000) {                           // branch rate ~30%
-        if (inst & 0x40000) pc = popReturn(ctx);
-        for (int i = 15; i >= 0; i -= 5) {
+    if (inst & 0x8000) {
+        if (inst & 0x4000) pc = popReturn(ctx);
+        inst &= 0x1FFF;             // 3 + 5 + 5 = 13 slot bits
+        for (int i = 10; i >= 0; i -= 5) {
             uint32_t t = ctx->t;
             uint32_t n = ctx->n;
             uint32_t _a = ctx->a;
             uint32_t _b = ctx->b;
             uint8_t slot = (inst >> i) & 0x1F;
             uint8_t se = stackeffects[slot];
-            if (se & 1) dupData(ctx);
-            else if (se & 2) dropData(ctx);
+            if (se & 1) {
+                dupData(ctx);
+            } else if (se & 2) {
+                dropData(ctx);
+            }
             switch(slot) {
                 // basic stack operations
                 case VMO_CYSTORE:    ctx->cy = t;
@@ -138,11 +167,18 @@ int stepVM(vm_ctx *ctx, uint32_t inst){
                 case VMO_DUP:
                 case VMO_DROP:                                            break;
                 case VMO_INV:        ctx->t = ~t;                         break;
-                case VMO_TWOSTAR:    ctx->t = (t << 1);                   break;
+                case VMO_TWOSTAR:    ctx->t = (t << 1) & VM_MASK;         break;
                 case VMO_TWODIV:     ctx->t = (t & VM_SIGN) | (t >> 1);   break;
-                case VMO_TWODIVC:    ctx->t = (ctx->cy << VM_CELLBITS) | (t >> 1);  break;
-                case VMO_PLUS:  t += ctx->t;  ctx->t = t & VM_MASK;
+                case VMO_TWODIVC:    ctx->t = (ctx->cy << (VM_CELLBITS - 1)) | (t >> 1);  break;
+                case VMO_PLUS:
+#if (VM_CELLBITS == 32)
+                                     ud = (uint64_t)t + (uint64_t)ctx->t;
+                                     ctx->t = ud & VM_MASK;
+                                     ctx->cy = (ud >> 32);                break;
+#else
+                                     t += ctx->t;  ctx->t = t & VM_MASK;
                                      ctx->cy = (t >> VM_CELLBITS) & 1;    break;
+#endif
                 case VMO_XOR:        ctx->t = t ^ n;                      break;
                 case VMO_AND:        ctx->t = t & n;                      break;
                 case VMO_SWAP:       ctx->t = n;  ctx->n = t;             break;
@@ -172,13 +208,14 @@ store:                               WriteCell(ctx, ctx->a, t);
                 case VMO_STOREBPLUS: _b = ctx->a + 1;  _a = ctx->b;  goto store;
                 default: break;
             }
+            PRINTF(" op:%02xh (%x %x)", slot, ctx->n, ctx->t);
         }
     } else switch ((inst >> 16) & 7) {  // 0xxx...
         case 0: pushReturn(ctx, pc);
         case 1: pc = inst & 0xFFFF; break;
         case 2:
         case 3:
-        case 4: dupData(ctx);  ctx->t = (inst & 0xFFFF);
+        case 4: dupData(ctx);  ctx->t = (inst & 0x1FFF);
         default: break;
     }
     ctx->pc = pc;
@@ -221,30 +258,17 @@ static void waitUntilVMready(vm_ctx *ctx){
     BCIinitial(ctx);
 }
 
-static int SimXT(vm_ctx *ctx, uint32_t xt){
+static int16_t SimXT(vm_ctx *ctx, uint32_t xt){
     int ior;
-    if (xt & (1<<25)) ior = stepVM(ctx, (0x80 | (xt & 0x3F)) << 18);
+    if (xt & (1<<31)) ior = stepVM(ctx, 0x8000 | (xt & 0x1F));
     else ior = stepVM(ctx, xt);
     return ior;
 }
 
 /*
 Since the VM has a context structure, these are late-bound in the context to allow stand-alone testing.
-
-| 0 | Boilerplate      | | *n(1), data(n), ack(1)* |
-| 1 | Execute word (xt) | *base(1), state(1), n(1), stack(n\*4), xt(4)* | *mark(1), base(1), state(1), m(1), stack(m\*4), ack(1)* |
-| 2 | Read from memory | *n(1), addr(4)* | *n(1), data(n\*4), ack(1)* |
-| 3 | Get CRC of memory | *n(2), addr(4)* | *CRC32(4), ack(1)* |
-| 4 | Store to memory  | *n(1), addr(4), data(n\*4)* | *ack(1)* |
-| 5 | Read register    | *id(4)* | *data(4), ack(1)* |
-| 6 | Write register   | *id(4), data(4)* | *ack(1)* |
-uint32_t DataMem[DATASIZE];
-uint32_t CodeMem[CODESIZE];
-```C
-int BCIVMioRead (vm_ctx ctx, uint32_t addr, uint32_t *x);
-int BCIVMioWrite(vm_ctx ctx, uint32_t addr, uint32_t x);
-int BCIVMcodeRead (vm_ctx ctx, uint32_t addr, uint32_t *x);
 */
+
 void BCIhandler(vm_ctx *ctx, const uint8_t *src, uint16_t length) {
     ctx->InitFn();
     cmd = src;  len = length;
