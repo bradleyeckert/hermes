@@ -14,6 +14,35 @@
 #define VM_SIGN     (1 << (VM_CELLBITS - 1))
 #define VM_MASK     ((1 << VM_CELLBITS) - 1)
 
+#define VMO_NOP                 0x00
+#define VMO_INV                 0x01
+#define VMO_DUP                 0x02
+#define VMO_ASTORE              0x03
+#define VMO_PLUS                0x04
+#define VMO_XOR                 0x05
+#define VMO_AND                 0x06
+#define VMO_DROP                0x07
+#define VMO_SWAP                0x08
+#define VMO_TWOSTAR             0x09
+#define VMO_OVER                0x0A
+#define VMO_CYSTORE             0x0B
+#define VMO_FETCHA              0x0C
+#define VMO_FETCHAPLUS          0x0D
+#define VMO_FETCHB              0x0E
+#define VMO_FETCHBPLUS          0x0F
+#define VMO_TWODIVC             0x10
+#define VMO_TWODIV              0x11
+#define VMO_STOREA              0x14
+#define VMO_STOREAPLUS          0x15
+#define VMO_STOREB              0x16
+#define VMO_STOREBPLUS          0x17
+#define VMO_UNEXT               0x18
+#define VMO_PUSH                0x1B
+#define VMO_CY                  0x1C
+#define VMO_A                   0x1D
+#define VMO_R                   0x1E
+#define VMO_POP                 0x1F
+
 #define BCIFN_BOILER   0
 #define BCIFN_READ     1
 #define BCIFN_WRITE    2

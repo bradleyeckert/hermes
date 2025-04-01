@@ -102,16 +102,16 @@ void BCIinitial(vm_ctx *ctx) {
 }
 
 static const uint8_t stackeffects[32] = {
-    0x00, 0x00, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02,
-    0x00, 0x00, 0x01, 0x01, 0x02, 0x02, 0x02, 0x12,
-    0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x01, 0x21, 0x02, 0x02, 0x02, 0x02
+    0x00, 0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x02,
+    0x00, 0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x02,
+    0x00, 0x00, 0x01, 0x02, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x01, 0x02, 0x01, 0x01, 0x01, 0x01
 };
 
-//00		nop	 com	over dup  +	    xor	and	drop	..++----
-//08		@a	 @a+	@m	 cy	  !a	!a+	cy!	>r		..++----
-//10		swap unext	a	 b	  2*	2/ 		2/c		..++....
-//18		@b	 @b+	r@	 r>	  !b	!b+	a!	b!		..++----
+//00		nop 	inv 	dup	a!	+	xor	and	drop		..+-----
+//08		2*  	unext	b	b!	!a	!a+	!b	!b+		..+-----
+//10		2/  	2/c	    .	>r	cy	a	r@	r>		..+-++++
+//18		swap	.   	over	cy!	@a	@a+	@b	@b+		..+-++++
 
 // Single-step the VM and set ctx->status to 1 if the PC goes out of bounds.
 // inst = 20-bit instruction. If 0, fetch inst from code memory.
@@ -120,47 +120,56 @@ static const uint8_t stackeffects[32] = {
 int stepVM(vm_ctx *ctx, uint32_t inst){
     uint32_t pc = ctx->pc;
     if (inst == 0) inst = ctx->CodeMem[pc++];
-    if (inst & 0x80000) {
+    if (inst & 0x80000) {                           // branch rate ~30%
         if (inst & 0x40000) pc = popReturn(ctx);
         for (int i = 15; i >= 0; i -= 5) {
             uint32_t t = ctx->t;
             uint32_t n = ctx->n;
+            uint32_t _a = ctx->a;
+            uint32_t _b = ctx->b;
             uint8_t slot = (inst >> i) & 0x1F;
             uint8_t se = stackeffects[slot];
             if (se & 1) dupData(ctx);
-            if (se & 2) dropData(ctx);
+            else if (se & 2) dropData(ctx);
             switch(slot) {
-                case 0x01: ctx->t = ~t;                         break;
-                case 0x02: ctx->t = n;                          break;
-                case 0x04: t += ctx->t;  ctx->t = t & VM_MASK;
-                           ctx->cy = (t >> VM_CELLBITS) & 1;    break;
-                case 0x05: ctx->t = t ^ n;                      break;
-                case 0x06: ctx->t = t & n;                      break;
-                case 0x08: ctx->memq = ReadCell(ctx, ctx->a);   break;
-                case 0x09: ctx->memq = ReadCell(ctx, ctx->a++); break;
-                case 0x0A: ctx->t = ctx->memq;                  break;
-                case 0x0B: ctx->t = ctx->cy;                    break;
-                case 0x0C: WriteCell(ctx, ctx->a, t);           break;
-                case 0x0D: WriteCell(ctx, ctx->a++, t);         break;
-                case 0x0E: ctx->cy = t;                         break;
-                case 0x0F: pushReturn(ctx, t);                  break;
-                case 0x10: ctx->t = n;  ctx->n = t;             break;
-                case 0x11: ctx->r--;
+                // basic stack operations
+                case VMO_CYSTORE:    ctx->cy = t;
+                case VMO_NOP:
+                case VMO_DUP:
+                case VMO_DROP:                                            break;
+                case VMO_INV:        ctx->t = ~t;                         break;
+                case VMO_TWOSTAR:    ctx->t = (t << 1);                   break;
+                case VMO_TWODIV:     ctx->t = (t & VM_SIGN) | (t >> 1);   break;
+                case VMO_TWODIVC:    ctx->t = (ctx->cy << VM_CELLBITS) | (t >> 1);  break;
+                case VMO_PLUS:  t += ctx->t;  ctx->t = t & VM_MASK;
+                                     ctx->cy = (t >> VM_CELLBITS) & 1;    break;
+                case VMO_XOR:        ctx->t = t ^ n;                      break;
+                case VMO_AND:        ctx->t = t & n;                      break;
+                case VMO_SWAP:       ctx->t = n;  ctx->n = t;             break;
+                case VMO_CY:         ctx->t = ctx->cy;                    break;
+                case VMO_OVER:       ctx->t = n;                          break;
+                case VMO_PUSH:       pushReturn(ctx, t);                  break;
+                case VMO_R:          ctx->t = ctx->r;                     break;
+                case VMO_POP:        ctx->t = popReturn(ctx);             break;
+                case VMO_UNEXT: ctx->r--;
                     if (ctx->r & VM_SIGN) {popReturn(ctx); break;}
                     else {i = 15; continue;}
-                case 0x12: ctx->t = ctx->a;                     break;
-                case 0x13: ctx->t = ctx->b;                     break;
-                case 0x14: ctx->t = (t << 1);                   break;
-                case 0x15: ctx->t = (t & VM_SIGN) | (t >> 1);   break;
-                case 0x17: ctx->t = (ctx->cy << VM_CELLBITS) | (t >> 1);  break;
-                case 0x18: ctx->memq = ReadCell(ctx, ctx->b);   break;
-                case 0x19: ctx->memq = ReadCell(ctx, ctx->b++); break;
-                case 0x1A: ctx->t = ctx->r;                     break;
-                case 0x1B: ctx->t = popReturn(ctx);             break;
-                case 0x1C: WriteCell(ctx, ctx->b, t);           break;
-                case 0x1D: WriteCell(ctx, ctx->b++, t);         break;
-                case 0x1E: ctx->a = t;                          break;
-                case 0x1F: ctx->b = t;                          break;
+                // memory operations
+                case VMO_ASTORE:     ctx->a = t;                          break;
+                case VMO_A:          ctx->t = ctx->a;                     break;
+                case VMO_FETCHB:     _b = ctx->a;  _a = ctx->b;
+                case VMO_FETCHA:
+fetch:                               ctx->t = ctx->memq;
+                                     ctx->memq = ReadCell(ctx, ctx->a);
+                                     ctx->a = _a;  ctx->b = _b;           break;
+                case VMO_FETCHAPLUS: _a = ctx->a + 1;                goto fetch;
+                case VMO_FETCHBPLUS: _b = ctx->a + 1;  _a = ctx->b;  goto fetch;
+                case VMO_STOREB:     _b = ctx->a;  _a = ctx->b;
+                case VMO_STOREA:
+store:                               WriteCell(ctx, ctx->a, t);
+                                     ctx->a = _a;  ctx->b = _b;           break;
+                case VMO_STOREAPLUS: _a = ctx->a + 1;                goto store;
+                case VMO_STOREBPLUS: _b = ctx->a + 1;  _a = ctx->b;  goto store;
                 default: break;
             }
         }
