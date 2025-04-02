@@ -1,7 +1,7 @@
-# hermes
+# mole
 AEAD-secured ports (UARTs, etc.) in C99 for MCUs
 
-I wrote `hermes` for three reasons:
+I wrote `mole` for three reasons:
 
 1. "Lock down" UART ports in a way that complies with real cybersecurity requirements
 2. Encrypt and sign data logs and audio recordings saved to files
