@@ -5,7 +5,7 @@
 #include "bci.h"
 #include "bciHW.h"
 
-#define TRACE 1
+#define TRACE 0
 
 /*
 BCIhandler takes input from a buffer and outputs to encrypted UART using these primitives:
@@ -124,15 +124,10 @@ void BCIinitial(vm_ctx *ctx) {
 
 static const uint8_t stackeffects[32] = {
     0x00, 0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x02,
-    0x00, 0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x02,
     0x00, 0x00, 0x01, 0x02, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x02,
     0x00, 0x00, 0x01, 0x02, 0x01, 0x01, 0x01, 0x01
 };
-
-//00		nop 	inv 	dup	a!	+	xor	and	drop		..+-----
-//08		2*  	unext	b	b!	!a	!a+	!b	!b+		..+-----
-//10		2/  	2/c	    .	>r	cy	a	r@	r>		..+-++++
-//18		swap	.   	over	cy!	@a	@a+	@b	@b+		..+-++++
 
 // Single-step the VM and set ctx->status to 1 if the PC goes out of bounds.
 // inst = 20-bit instruction. If 0, fetch inst from code memory.
@@ -162,14 +157,17 @@ int stepVM(vm_ctx *ctx, uint16_t inst){
             }
             switch(slot) {
                 // basic stack operations
-                case VMO_CYSTORE:    ctx->cy = t;
+                case VMO_CYSTORE:    ctx->cy = t & 1;
                 case VMO_NOP:
                 case VMO_DUP:
                 case VMO_DROP:                                            break;
                 case VMO_INV:        ctx->t = ~t;                         break;
-                case VMO_TWOSTAR:    ctx->t = (t << 1) & VM_MASK;         break;
-                case VMO_TWODIV:     ctx->t = (t & VM_SIGN) | (t >> 1);   break;
-                case VMO_TWODIVC:    ctx->t = (ctx->cy << (VM_CELLBITS - 1)) | (t >> 1);  break;
+                case VMO_TWOSTAR:    ctx->t = (t << 1) & VM_MASK;
+                                     ctx->cy = (t >> (VM_CELLBITS - 1)) & 1;  break;
+                case VMO_TWODIV:     ctx->t = (t & VM_SIGN) | (t >> 1);
+                                     ctx->cy = t & 1;                     break;
+                case VMO_TWODIVC:    ctx->t = (ctx->cy << (VM_CELLBITS - 1)) | (t >> 1);
+                                     ctx->cy = t & 1;                     break;
                 case VMO_PLUS:
 #if (VM_CELLBITS == 32)
                                      ud = (uint64_t)t + (uint64_t)ctx->t;
@@ -195,8 +193,7 @@ int stepVM(vm_ctx *ctx, uint16_t inst){
                 case VMO_A:          ctx->t = ctx->a;                     break;
                 case VMO_FETCHB:     _b = ctx->a;  _a = ctx->b;
                 case VMO_FETCHA:
-fetch:                               ctx->t = ctx->memq;
-                                     ctx->memq = ReadCell(ctx, ctx->a);
+fetch:                               ctx->t = ReadCell(ctx, ctx->a);
                                      ctx->a = _a;  ctx->b = _b;           break;
                 case VMO_FETCHAPLUS: _a = ctx->a + 1;                goto fetch;
                 case VMO_FETCHBPLUS: _b = ctx->a + 1;  _a = ctx->b;  goto fetch;
@@ -210,15 +207,33 @@ store:                               WriteCell(ctx, ctx->a, t);
             }
             PRINTF(" op:%02xh (%x %x)", slot, ctx->n, ctx->t);
         }
-    } else switch ((inst >> 16) & 7) {  // 0xxx...
-        case 0: pushReturn(ctx, pc);
-        case 1: pc = inst & 0xFFFF; break;
-        case 2:
-        case 3:
-        case 4: dupData(ctx);  ctx->t = (inst & 0x1FFF);
-        default: break;
+    } else {
+        uint16_t _lex = 0;
+        uint16_t imm9;
+        int32_t immex = (ctx->lex << 13) | (inst & 0x1FFF);
+        switch ((inst >> 13) & 3) {
+            case 0: pushReturn(ctx, pc);
+            case 1: pc = immex;                                     break;
+            case 2: dupData(ctx);  ctx->t = immex;                  break;
+            default: imm9 = inst & 0x1FF;
+            immex = imm9;
+            if (inst & 0x100) immex |= 0xFFFFFE00;
+            switch ((inst >> 9) & 15) {
+                case 0: _lex = (ctx->lex << 9) | imm9;              break;
+                case 1: ctx->ior = imm9;                            break;
+                case 4: if (ctx->t == 0) pc += immex;               break;
+                case 5: dropData(ctx);                              break;
+                case 6: if ((ctx->t & VM_SIGN) == 0) pc += immex;   break;
+                case 7: ctx->r--;
+                    if (ctx->r & VM_SIGN) popReturn(ctx);
+                    else pc += immex;
+                    break;
+                default: break;
+            }
+        }
+        ctx->lex = _lex;
+        ctx->pc = pc;
     }
-    ctx->pc = pc;
     return ctx->ior;
 }
 

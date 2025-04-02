@@ -75,8 +75,7 @@ typedef struct
 {   uint32_t pc;                // program counter
     uint16_t ir;                // instruction register
     uint32_t r, n, t, a, b, x, y;
-    uint32_t memq;              // DataMem output bus (synchronous-read)
-    uint16_t upperBus;          // upper 16 bits of 32-bit I/O data
+    uint16_t lex;
     int16_t ior;
     uint8_t sp, rp, status, cy;
     uint32_t DataStack[STACKSIZE];
