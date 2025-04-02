@@ -10,6 +10,7 @@ I wrote `mole` for three reasons:
 It uses pre-arranged private keys, so it can output encrypted messages without a 2-way handshake. Boot messages sent out the UART will appear as gibberish unless the receiver looks up the private keys from its key store and decrypts the message stream.
 
 Making the UART connector easily accessible does not reduce cybersecurity in any way. Without the keys, it is totally locked down.
+
 ## tests
 `test.c` - A simulation of two ports connected by a noisy null-modem cable
 
