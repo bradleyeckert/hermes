@@ -6,7 +6,7 @@ AEAD-secured ports (for UARTs, etc.)
 #include <stdint.h>
 #include <string.h>
 #include "xchacha/src/xchacha.h"
-#include "siphash/src/siphash.h"
+#include "blake2s/src/blake2s.h"
 #include "mole.h"
 
 #define ALLOC_HEADROOM (MOLE_ALLOC_MEM_UINT32S - allocated_uint32s)
@@ -18,7 +18,7 @@ AEAD-secured ports (for UARTs, etc.)
 void DUMP(const uint8_t *src, uint8_t len) {
     if (TRACE > 1) {
         for (uint8_t i = 0; i < len; i++) {
-            if ((i % 33) == 0) printf("\n___");
+            if ((i % 32) == 0) printf("\n___");
             printf("%02X ", src[i]);
         }
         printf("<- ");
@@ -54,10 +54,15 @@ static int testHMAC(port_ctx *ctx, const uint8_t *buf) {
 }
 
 static int testKey(port_ctx *ctx, const uint8_t *key) {
+    DUMP(&key[0], 80);    PRINTF("ekey:hkey:auth\n");
     ctx->hInitFn((void *)&*ctx->rhCtx, &key[32], 16, MOLE_KEY_HASH_KEY);
-    for (int i=0; i < 48; i++) ctx->hputcFn((void *)&*ctx->rhCtx, key[i]);
+    for (int i=0; i < 80; i++) {
+        ctx->hputcFn((void *)&*ctx->rhCtx, key[i]);
+    }
     ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
-    return testHMAC(ctx, &key[48]);
+    DUMP(ctx->hmac, 16);  PRINTF("expected key hmac");
+    DUMP(&key[80], 16);   PRINTF("actual key hmac\n");
+    return testHMAC(ctx, &key[80]);
 }
 
 static void SendByteU(port_ctx *ctx, uint8_t c) {
@@ -208,11 +213,11 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
     default: // 0
         ctx->rcCtx = Allocate(sizeof(xChaCha_ctx));
         ctx->tcCtx = Allocate(sizeof(xChaCha_ctx));
-        ctx->rhCtx = Allocate(sizeof(siphash_ctx));
-        ctx->thCtx = Allocate(sizeof(siphash_ctx));
-        ctx->hInitFn  = sip_hmac_init_g;
-        ctx->hputcFn  = sip_hmac_putc_g;
-        ctx->hFinalFn = sip_hmac_final_g;
+        ctx->rhCtx = Allocate(sizeof(blake2s_state));
+        ctx->thCtx = Allocate(sizeof(blake2s_state));
+        ctx->hInitFn  = b2s_hmac_init_g;
+        ctx->hputcFn  = b2s_hmac_putc_g;
+        ctx->hFinalFn = b2s_hmac_final_g;
         ctx->cInitFn  = xc_crypt_init_g;
         ctx->cBlockFn = xc_crypt_block_g;
     }
@@ -412,6 +417,7 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                 molePair(ctx);                // assume synchronization is lost
             } else {
                 if (c == MOLE_MSG_NEW_KEY) {
+                    PRINTF("\nTesting the new key");
                     temp = testKey(ctx, &ctx->rxbuf[1]);
                     if (temp) return temp;      // bad key
                     k = ctx->WrKeyFn(&ctx->rxbuf[1]);
@@ -448,7 +454,7 @@ static int NewStream(port_ctx *ctx) {
     ctx->rReady = 0;
     ctx->tReady = 0;
     ctx->hctrTx = 0;
-    SendBoiler(ctx);                            // include ID information for keying
+    SendBoiler(ctx);                          // include ID information for keying
     int r = SendIV(ctx, MOLE_TAG_IV_A);       // and an encrypted IV
     return r;
 }
@@ -522,7 +528,7 @@ int moleSend(port_ctx *ctx, const uint8_t *src, int len) {
 
 // Encrypt and send a key set
 int moleReKey(port_ctx *ctx, const uint8_t *key){
-    if (moleAvail(ctx) < 80) return MOLE_ERROR_MSG_NOT_SENT;
-    moleSendMsg(ctx, key, 80, MOLE_MSG_NEW_KEY);
+    if (moleAvail(ctx) < MOLE_KEYSET_LENGTH) return MOLE_ERROR_MSG_NOT_SENT;
+    moleSendMsg(ctx, key, MOLE_KEYSET_LENGTH, MOLE_MSG_NEW_KEY);
     return 0;
 }

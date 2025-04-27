@@ -3,14 +3,15 @@
 
 #include <stdint.h>
 #include "xchacha/src/xchacha.h"
-#include "siphash/src/siphash.h"
+#include "blake2s/src/blake2s.h"
 
-#define MOLE_ALLOC_MEM_UINT32S    300 /* longs for context memory */
+#define MOLE_ALLOC_MEM_UINT32S    320 /* longs for context memory */
 #define MOLE_KEY_HASH_KEY        0ull /* 8-byte keyset master key */
 #define MOLE_FILE_MESSAGE_SIZE      9 /* Log2 of file message block */
 
 #define MOLE_IV_LENGTH             16 /* Bytes in IV, should be 16 */
 #define MOLE_HMAC_LENGTH           16 /* Bytes in HMAC, may be 8 or 16 */
+#define MOLE_KEYSET_LENGTH         96 /* ke32, kh32, auth16, hmac16 */
 
 // Message tags
 #define MOLE_TAG_END             0x0A /* signal end of message (don't change) */
@@ -81,15 +82,16 @@ typedef void (*crypt_blockFn)(size_t *ctx, const uint8_t *in, uint8_t *out, int 
 
 typedef struct
 {   char* name;             // port name (for debugging)
+// The 4 following could be declared void*, but use actual structures for code completion
     xChaCha_ctx *rcCtx;     // receiver encryption context
-	siphash_ctx *rhCtx;     // receiver HMAC context
+	blake2s_state *rhCtx;   // receiver HMAC context
     xChaCha_ctx *tcCtx;     // transmitter encryption context
-	siphash_ctx *thCtx;	    // transmitter HMAC context
-    mole_boilrFn boilrFn; // boilerplate handler (from molePutc)
-    mole_plainFn plainFn; // plaintext handler (from molePutc)
-    mole_ciphrFn ciphrFn; // ciphertext transmit function
-    mole_WrKeyFn WrKeyFn; // rewrite key set for this port
-    mole_rngFn rngFn;     // get a reasonably random byte
+	blake2s_state *thCtx;   // transmitter HMAC context
+    mole_boilrFn boilrFn;   // boilerplate handler (from molePutc)
+    mole_plainFn plainFn;   // plaintext handler (from molePutc)
+    mole_ciphrFn ciphrFn;   // ciphertext transmit function
+    mole_WrKeyFn WrKeyFn;   // rewrite key set for this port
+    mole_rngFn rngFn;       // get a reasonably random byte
     hmac_initFn hInitFn;    // HMAC initialization function
     hmac_putcFn hputcFn;    // HMAC putc function
     hmac_finalFn hFinalFn;  // HMAC finalization function
@@ -129,7 +131,7 @@ void moleNoPorts(void);
 /** Append to the port list.
  * @param ctx         Port identifier
  * @param boilerplate Plaintext port identification boilerplate
- * @param protocol    AEAD protocol used: 0 = xchacha20-siphash
+ * @param protocol    AEAD protocol used: 0 = xchacha20-blake2s
  * @param name        Name of port (for debugging)
  * @param rxBlocks    Size of receive buffer in 64-byte blocks
  * @param rngFn       Function to generate a random byte
