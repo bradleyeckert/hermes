@@ -5,14 +5,14 @@
 #include "xchacha/src/xchacha.h"
 #include "siphash/src/siphash.h"
 
-#define MOLE_ALLOC_MEM_UINT32S    256 /* longs for context memory */
+#define MOLE_ALLOC_MEM_UINT32S    300 /* longs for context memory */
 #define MOLE_KEY_HASH_KEY        0ull /* 8-byte keyset master key */
 #define MOLE_FILE_MESSAGE_SIZE      9 /* Log2 of file message block */
-                                   
+
 #define MOLE_IV_LENGTH             16 /* Bytes in IV, should be 16 */
 #define MOLE_HMAC_LENGTH           16 /* Bytes in HMAC, may be 8 or 16 */
-                                   
-// Message tags                    
+
+// Message tags
 #define MOLE_TAG_END             0x0A /* signal end of message (don't change) */
 #define MOLE_ESCAPE              0x0B
 #define MOLE_HMAC_TRIGGER        0x02 /* 2nd char of escape sequence, triggers HMAC */
@@ -24,7 +24,7 @@
 #define MOLE_TAG_IV_B            0x19 /* signal a 1-way IV init */
 #define MOLE_TAG_ADMIN           0x1A /* admin password (random 128-bit number) */
 #define MOLE_TAG_RAWTX           0x1F /* Raw non-repeatable AEAD message */
-                                   
+
 #define MOLE_MSG_MESSAGE         0x00
 #define MOLE_MSG_NEW_KEY         0xAA
 #define MOLE_LENGTH_UNKNOWN      0x01
