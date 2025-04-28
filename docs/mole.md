@@ -17,12 +17,12 @@ With pre-shared keys, an authorized user must securely log into the key server a
 
 `mole` uses a symmetric algorithm for encryption and a keyed HMAC (hash) algorithm for message integrity.
 
-The default protocol used by `mole` is XChaCha20-SipHash. Xchacha20 is a long-IV version of [ChaCha20](https://en.wikipedia.org/wiki/Salsa20). For forward compatibility, a 128-bit IV is used instead of XChaCha20's 192-bit IV. [SipHash](https://en.wikipedia.org/wiki/SipHash) is a keyed HMAC. A version with 16-byte output authenticates the entire message, including the plaintext header, so that the header cannot be altered.
+The default protocol used by `mole` is **XChaCha20-Blake2s**. Xchacha20 is a long-IV version of [ChaCha20](https://en.wikipedia.org/wiki/Salsa20). For forward compatibility, a 128-bit IV is used instead of XChaCha20's 192-bit IV. [Blake2s](https://datatracker.ietf.org/doc/html/rfc7693.html) is used as a keyed HMAC. Its 16-byte output authenticates the entire message, including the plaintext header, so that the header cannot be altered. Originally, SipHash was going to be the keyed HMAC, which would have been fine except for use cases where an attacker has infinite time to crack SipHash, so Blake2s is used instead.
 
 Cryptographic functions are called through function pointers held in the port's `struct`. Other AEAD algorithms may be plugged in by using the default setup as a template. To keep it simple, the following lengths are fixed:
 
 - 256-bit Encryption key
-- 128-bit HMAC key
+- 256-bit HMAC key
 - 128-bit Encryption IV
 - 128-bit HMAC hash
 
@@ -87,14 +87,14 @@ Boilerplate messages are plaintext, so they do not get a hash. The allowed lengt
 The boilerplate contains a UUID. For example, the CH32V20x and CH32V30x MCUs contain a 96-bit ESIG. To use the ESIG in the boilerplate, `memcpy` would move 12 bytes from address `0x1FFFF7E8` to a RAM buffer used by the boilerplate. Other boilerplate items include the AEAD protocol used (0 means XChaCha20-SipHash) and HMAC length (8 or 16 bytes). The default data structure for `mole` is:
 
 - Length of the boilerplate in bytes, should be less than 65. Default is 18.
-- 3-byte "nyb" string (nyb = None of your business)
+- 4-byte "noyb" string (noyb = None of your business)
 - 13-byte UUID
 - 1-byte AEAD format identifier
 - Optional CRC
 
 The AEAD format identifier packs bitfields as follows:
 
-- b2:b0 = AEAD protocol. 0 = XChaCha20-SipHash.
+- b2:b0 = AEAD protocol. 0 = XChaCha20-Blake2s.
 - b6:b3 = reserved, default is 0110.
 - b7 = HMAC length. 0 = 16-byte, 1 = 8-byte. Default is 0.
 
