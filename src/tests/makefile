@@ -20,9 +20,12 @@ all:	mtest ftest
 
 mtest:	$(OBJS1)
 	$(CC) -o $@ $^ $(CFLAGS)
+	@echo	./mtest runs the main test, creates demofile.bin
+
 
 ftest:	$(OBJS2)
 	$(CC) -o $@ $^ $(CFLAGS)
+	@echo	./ftest decrypts demofile.bin
 
 # Phony target for cleaning up
 clean:
@@ -30,5 +33,3 @@ clean:
 
 # make all      makes mtest (the main test) and file test (ftest)
 # make clean    remove object files
-# ./mtest       runs the main test, creates demofile.bin
-# ./ftest       decrypts demofile.bin
