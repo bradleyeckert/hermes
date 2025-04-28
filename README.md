@@ -25,4 +25,4 @@ Making the UART connector easily accessible does not reduce cybersecurity in any
 `/docs` Documentation for `mole`
 
 ---
-Note: Contains [submodules](https://www.geeksforgeeks.org/how-to-clone-git-repositories-including-submodules/). Use `git clone --recurse <url>` to clone.
+Note: Contains [submodules](https://www.geeksforgeeks.org/how-to-clone-git-repositories-including-submodules/). Use `git clone --recurse <url>` to clone. `git submodule update --init --recursive` is very useful.
