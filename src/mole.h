@@ -11,7 +11,7 @@
 
 #define MOLE_IV_LENGTH             16 /* Bytes in IV, should be 16 */
 #define MOLE_HMAC_LENGTH           16 /* Bytes in HMAC, may be 8 or 16 */
-#define MOLE_KEYSET_LENGTH        128 /* ke32, kh32, auth16, hmac16 */
+#define MOLE_KEYSET_LENGTH        160 /* ..., hmac16 */
 #define MOLE_KEYSET_HMAC  (MOLE_KEYSET_LENGTH - MOLE_HMAC_LENGTH)
 
 // Message tags
