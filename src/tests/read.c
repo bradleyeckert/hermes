@@ -13,7 +13,7 @@ const uint8_t my_encryption_key[] = {
 
 #define my_signature_key  (&my_encryption_key[32])
 
-#define FILENAME "C:/Users/Brad/Documents/GitHub/hermes_CodeBlocks/HERMES/bin/Release/demofile.bin"
+#define FILENAME "demofile.bin"
 
 // Decode a file created by moletest.c
 
