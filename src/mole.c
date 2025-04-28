@@ -54,15 +54,15 @@ static int testHMAC(port_ctx *ctx, const uint8_t *buf) {
 }
 
 static int testKey(port_ctx *ctx, const uint8_t *key) {
-    DUMP(&key[0], 80);    PRINTF("ekey:hkey:auth\n");
+    DUMP(&key[0], MOLE_KEYSET_HMAC);    PRINTF("keyset data\n");
     ctx->hInitFn((void *)&*ctx->rhCtx, &key[32], 16, MOLE_KEY_HASH_KEY);
-    for (int i=0; i < 80; i++) {
+    for (int i=0; i < MOLE_KEYSET_HMAC; i++) {
         ctx->hputcFn((void *)&*ctx->rhCtx, key[i]);
     }
     ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
     DUMP(ctx->hmac, 16);  PRINTF("expected key hmac");
-    DUMP(&key[80], 16);   PRINTF("actual key hmac\n");
-    return testHMAC(ctx, &key[80]);
+    DUMP(&key[MOLE_KEYSET_HMAC], 16);   PRINTF("actual key hmac\n");
+    return testHMAC(ctx, &key[MOLE_KEYSET_HMAC]);
 }
 
 static void SendByteU(port_ctx *ctx, uint8_t c) {
