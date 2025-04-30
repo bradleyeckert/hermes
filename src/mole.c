@@ -15,7 +15,7 @@ AEAD-secured ports (for UARTs, etc.)
 
 #if (TRACE)
 #include <stdio.h>
-void DUMP(const uint8_t *src, uint8_t len) {
+static void DUMP(const uint8_t *src, uint8_t len) {
     if (TRACE > 1) {
         for (uint8_t i = 0; i < len; i++) {
             if ((i % 32) == 0) printf("\n___");
@@ -27,7 +27,7 @@ void DUMP(const uint8_t *src, uint8_t len) {
 #define PRINTF  if (TRACE > 1) printf
 #define PRINTf  printf
 #else
-void DUMP(const uint8_t *src, uint8_t len) {}
+static void DUMP(const uint8_t *src, uint8_t len) {}
 #define PRINTF(...) do { } while (0)
 #define PRINTf PRINTF
 #endif
