@@ -5,7 +5,7 @@
 #include "xchacha/src/xchacha.h"
 #include "blake2s/src/blake2s.h"
 
-#define MOLE_ALLOC_MEM_UINT32S    416 /* longs for context memory */
+#define MOLE_ALLOC_MEM_UINT32S   4096 /* longs for context memory */
 #define MOLE_KEY_HASH_KEY        0ull /* 8-byte keyset master key */
 #define MOLE_FILE_MESSAGE_SIZE      9 /* Log2 of file message block */
 

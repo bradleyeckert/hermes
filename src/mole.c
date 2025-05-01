@@ -226,7 +226,7 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
 }
 
 int moleRAMused (int ports) {
-    return sizeof(uint32_t) * MOLE_ALLOC_MEM_UINT32S + ports * sizeof(port_ctx);
+    return sizeof(uint32_t) * allocated_uint32s + ports * sizeof(port_ctx);
 }
 
 int moleRAMunused (void) {
