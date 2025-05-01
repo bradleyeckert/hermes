@@ -110,8 +110,8 @@ static void SendHeader(port_ctx *ctx, int tag) {
 }
 
 static void SendEnd(port_ctx *ctx) {            // send END tag
+    ctx->counter++;
     ctx->ciphrFn(MOLE_TAG_END);
-    ctx->counter += 2;
 }
 
 static void SendBoiler(port_ctx *ctx) {         // send boilerplate packet
