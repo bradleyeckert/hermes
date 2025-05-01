@@ -111,7 +111,6 @@ static void SendHeader(port_ctx *ctx, int tag) {
 
 static void SendEnd(port_ctx *ctx) {            // send END tag
     ctx->ciphrFn(MOLE_TAG_END);
-    ctx->ciphrFn(MOLE_TAG_END);               // repeat for redundancy
     ctx->counter += 2;
 }
 

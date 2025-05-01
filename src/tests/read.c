@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     SkipEndTag();                               // skip boilerplate
-    SkipEndTag();
+//    SkipEndTag();
     printf("\nBegin CHALLENGE message at 0x%X ", (unsigned int)ftell(file));
     hctr = 0;
     b2s_hmac_init(&hCtx, my_signature_key, 16, hctr);
