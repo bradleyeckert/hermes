@@ -135,8 +135,8 @@
             </mxGeometry>
           </mxCell>
         </object>
-        <mxCell id="25" value="void ctx-&amp;gt;plainFn(uint8_t *src, uint8_t *ack, int max)&lt;div&gt;Handler for received plaintext, includes&lt;/div&gt;&lt;div&gt;optional return message with ACK&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
-          <mxGeometry x="620" y="305" width="300" height="60" as="geometry" />
+        <mxCell id="25" value="void ctx-&amp;gt;plainFn(uint8_t *src, uint8_t *ack, int max)&lt;div&gt;Handler for received plaintext&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="620" y="315" width="300" height="40" as="geometry" />
         </mxCell>
         <mxCell id="26" value="moleAvail(ctx)&lt;div&gt;Nonzero after successful ACK&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
           <mxGeometry x="110" y="355" width="180" height="40" as="geometry" />
@@ -170,7 +170,7 @@
         <mxCell id="41" value="AD[17], CTEXT[16], HMAC[16], END[1]" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
           <mxGeometry x="375" y="270" width="230" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="42" value="Pre-shared keys: 256-bit for encryption&lt;div&gt;&amp;nbsp;+ 128-bit for keyed HMAC&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#b85450;fillColor=#f8cecc;" parent="1" vertex="1">
+        <mxCell id="42" value="Pre-shared keys: 256-bit for encryption&lt;div&gt;&amp;nbsp;+ 256-bit for HMAC signature&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#b85450;fillColor=#f8cecc;" parent="1" vertex="1">
           <mxGeometry x="100" y="590" width="230" height="40" as="geometry" />
         </mxCell>
         <mxCell id="46" value="&lt;font style=&quot;font-size: 16px;&quot;&gt;&lt;b&gt;Device&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">

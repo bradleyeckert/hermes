@@ -129,15 +129,14 @@ static void SendTxHash(port_ctx *ctx, int pad){ // finish authenticated packet
     ctx->hctrTx++;
     ctx->ciphrFn(MOLE_ESCAPE);                   // HMAC marker
     ctx->ciphrFn(MOLE_HMAC_TRIGGER);
+    ctx->counter += 2;
     for (int i = 0; i < MOLE_HMAC_LENGTH; i++) SendByteU(ctx, hash[i]);
-    ctx->ciphrFn(MOLE_TAG_END);
-    ctx->counter += 3;
+    SendEnd(ctx);
     while (pad && (ctx->counter & 0x1F)) {      // pad until next 32-byte boundary
         ctx->counter++;
         ctx->ciphrFn(0);
     }
-    ctx->counter++;
-    ctx->ciphrFn(MOLE_TAG_END);
+    SendEnd(ctx);
 }
 
 // Send: Tag[1], mIV[], cIV[], RXbufsize[2], HMAC[]
@@ -493,13 +492,13 @@ int moleTxInit(port_ctx *ctx) {               // use if not paired
     return NewStream(ctx);
 }
 
-void moleSendInit(port_ctx *ctx, uint8_t type) {
+static void moleSendInit(port_ctx *ctx, uint8_t type) {
     SendHeader(ctx, MOLE_TAG_MESSAGE);
     ctx->txbuf[0] = type;
     ctx->txidx = 1;
 }
 
-void moleSendChar(port_ctx *ctx, uint8_t c) {
+static void moleSendChar(port_ctx *ctx, uint8_t c) {
     int i = ctx->txidx;
     ctx->txbuf[i] = c;
     i = (i + 1) & 0x0F;
@@ -507,7 +506,7 @@ void moleSendChar(port_ctx *ctx, uint8_t c) {
     if (!i) SendTxBuf(ctx);
 }
 
-void moleSendFinal(port_ctx *ctx) {
+static void moleSendFinal(port_ctx *ctx) {
     ctx->txbuf[15] = ctx->txidx;
     SendTxBuf(ctx);
     SendTxHash(ctx, MOLE_END_UNPADDED);

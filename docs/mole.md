@@ -1,14 +1,17 @@
 # Mole - Cryptographic protection for serial ports
 
-Cybersecurity for embedded systems has been getting a lot of scrutiny due to such systems being exploited in spectacular Bond-villain-level cyber attacks. Encrypted UARTs are now a thing, possibly turning into a mandated thing down the road. Already in some markets, encryption is mandated for data crossing enclosure boundaries. `mole` encrypts UART traffic using a small memory footprint. While it uses xchacha20-siphash for AEAD by default, other encryption and HMAC schemes are easily added (AES-SHA, SH4-SH3, etc).
+Cybersecurity for embedded systems is now a thing. In many markets, encryption is mandated for data crossing enclosure boundaries. `mole` encrypts UART traffic using a small memory footprint. While it uses xchacha20-siphash for AEAD by default, other encryption and HMAC schemes are easily added (AES-SHA, SH4-SH3, etc).
 
 `mole` achieves its small footprint by not trying to copy the SSL/TLS usage model that was made for the Internet. The usage model is closer to that of NFT cards like Mifare DESFire: many cards, few readers. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it. Likewise, one of the devices using Mole is assumed to have an Internet connection for getting the required keys from a remote server or key vault. In other words, `mole` uses a closed ecosystem.
 
 Manufacturers already operate a closed ecosystem for their products. `mole` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. Pre-shared keys avoid PKE. Without PKE, there is no spoofing.
 
-The tradeoff between pre-shared vs public keys is influenced by advanced Man-in-The-Middle (MiTM) spoofing [tools](https://slava-moskvin.medium.com/extracting-firmware-every-method-explained-e94aa094d0dd) that create self-signed HTTPS certificates. There are also tools to defeat SSL pinning. You have to wonder what's next.
+The tradeoff between pre-shared vs public keys is influenced by advanced Man-in-The-Middle (MiTM) spoofing [tools](https://slava-moskvin.medium.com/extracting-firmware-every-method-explained-e94aa094d0dd) that create self-signed HTTPS certificates. There are also tools to defeat SSL pinning. The problems with key escrow, mostly centered on trust, would not be solved with PKE and certificates. A manufacturer can brick your device either way. One-way encrypted messages, such as those stored in files, do not support key exchange, which rules out PKE.
 
 With pre-shared keys, an authorized user must securely log into the key server and download the key in order to pair a UART connection. Key management relies on key escrow instead. Anti-spoofing relies on the security of the escrow.
+
+A block diagram of the Mole serial port encryption in the context of a key management system:
+![block diagram](call-flow.drawio.png)
 
 ## AEAD
 
@@ -119,8 +122,6 @@ For example, a 24-bit stereo CODEC produces 6-byte samples. Five samples pack in
 File reading is outside the scope of Mole. Messages can only be read from the beginning, so the utility of reading them with Mole would be limited. But, the file reading demo is `test/read.c`. The file is created by `test/test.c`.
 
 ## Modern UARTs
-
-The buffer size is affected by the latency of USB-serial conversion. Supposing a 4ms round trip time (host to target to host), you probably want messages to amount to that span of time. At 1 MBPS, a UART can send 400 bytes in 4 ms. You would want 512- or 256-byte buffers.
 
 Data can be streamed out of the UART as a file stream. It is authenticated after each block. Such one-way communication doesn't care about USB latency or whether there is anything connected to the port.
 

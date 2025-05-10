@@ -5,7 +5,9 @@
 #include "xchacha/src/xchacha.h"
 #include "blake2s/src/blake2s.h"
 
+#ifndef MOLE_ALLOC_MEM_UINT32S
 #define MOLE_ALLOC_MEM_UINT32S   4096 /* longs for context memory */
+#endif
 #define MOLE_KEY_HASH_KEY        0ull /* 8-byte keyset master key */
 #define MOLE_FILE_MESSAGE_SIZE      9 /* Log2 of file message block */
 
@@ -170,12 +172,6 @@ int moleTxInit(port_ctx *ctx);
  * @return      0 if okay, otherwise MOLE_ERROR_?
  */
 int moleSend(port_ctx *ctx, const uint8_t *m, int bytes);
-
-// Underlying char primitives for moleSend:
-
-void moleSendInit(port_ctx *ctx, uint8_t type); // use MOLE_MSG_MESSAGE for type
-void moleSendChar(port_ctx *ctx, uint8_t c);
-void moleSendFinal(port_ctx *ctx);
 
 
 /** Encrypt and send a re-key message, returns key
