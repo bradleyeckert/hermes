@@ -1,6 +1,6 @@
 # Mole - Cryptographic protection for serial ports
 
-Cybersecurity for embedded systems is now a thing. In many markets, encryption is mandated for data crossing enclosure boundaries. `mole` encrypts UART traffic using a small memory footprint. While it uses xchacha20-siphash for AEAD by default, other encryption and HMAC schemes are easily added (AES-SHA, SH4-SH3, etc).
+Cybersecurity for embedded systems is now a thing. In many markets, encryption is mandated for data crossing enclosure boundaries. `mole` encrypts UART traffic using a small memory footprint. While it uses xchacha20-blake2s for AEAD by default, other encryption and HMAC schemes are easily added (AES-SHA, SH4-SH3, etc).
 
 `mole` achieves its small footprint by not trying to copy the SSL/TLS usage model that was made for the Internet. The usage model is closer to that of NFT cards like Mifare DESFire: many cards, few readers. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it. Likewise, one of the devices using Mole is assumed to have an Internet connection for getting the required keys from a remote server or key vault. In other words, `mole` uses a closed ecosystem.
 
