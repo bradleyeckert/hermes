@@ -18,9 +18,9 @@ A block diagram of the Mole serial port encryption in the context of a key manag
 [Wikipedia](https://en.wikipedia.org/wiki/Authenticated_encryption):
 > Authenticated encryption with associated data (AEAD) is a variant of AE that allows the message to include "associated data" (AD, additional non-confidential information, a.k.a. "additional authenticated data", AAD). A recipient can check the integrity of both the associated data and the confidential information in a message.
 
-`mole` uses a symmetric algorithm for encryption and a keyed HMAC (hash) algorithm for message integrity.
+`mole` uses a symmetric algorithm for encryption and a HMAC (hash) algorithm for message signing.
 
-The default protocol used by `mole` is **XChaCha20-Blake2s**. Xchacha20 is a long-IV version of [ChaCha20](https://en.wikipedia.org/wiki/Salsa20). For forward compatibility, a 128-bit IV is used instead of XChaCha20's 192-bit IV. [Blake2s](https://datatracker.ietf.org/doc/html/rfc7693.html) is used as a keyed HMAC. Its 16-byte output authenticates the entire message, including the plaintext header, so that the header cannot be altered. Originally, SipHash was going to be the keyed HMAC, which would have been fine except for use cases where an attacker has infinite time to crack SipHash, so Blake2s is used for its stronger security.
+The default protocol used by `mole` is **XChaCha20-Blake2s**. Xchacha20 is a long-IV version of [ChaCha20](https://en.wikipedia.org/wiki/Salsa20). For forward compatibility, a 128-bit IV is used instead of XChaCha20's 192-bit IV. [Blake2s](https://datatracker.ietf.org/doc/html/rfc7693.html) is used as a HMAC. Its 16-byte output authenticates the entire message, including the plaintext header, so that the header cannot be altered. Originally, SipHash was going to be the HMAC, which would have been fine except for use cases where an attacker has infinite time to crack SipHash, so Blake2s is used for its stronger security.
 
 Cryptographic functions are called through function pointers held in the port's `struct`. Other AEAD algorithms may be plugged in by using the default setup as a template. To keep it simple, the following lengths are fixed:
 
@@ -29,7 +29,7 @@ Cryptographic functions are called through function pointers held in the port's 
 - 128-bit Encryption IV
 - 128-bit HMAC hash
 
-The keyed hash includes a 64-bit counter that gets incremented after each hash, which rules out replay attacks.
+The hash includes a 64-bit counter that gets incremented after each hash, which rules out replay attacks.
 
 ## Escape sequences
 
