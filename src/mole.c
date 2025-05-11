@@ -8,15 +8,18 @@ AEAD-secured ports (for UARTs, etc.)
 #include "xchacha/src/xchacha.h"
 #include "blake2s/src/blake2s.h"
 #include "mole.h"
+#include "moleconfig.h"
 
 #define ALLOC_HEADROOM (MOLE_ALLOC_MEM_UINT32S - allocated_uint32s)
 
-#define TRACE 0
+#ifndef MOLE_TRACE
+#define MOLE_TRACE 0
+#endif // MOLE_TRACE
 
-#if (TRACE)
+#if (MOLE_TRACE)
 #include <stdio.h>
 static void DUMP(const uint8_t *src, uint8_t len) {
-    if (TRACE > 1) {
+    if (MOLE_TRACE > 1) {
         for (uint8_t i = 0; i < len; i++) {
             if ((i % 32) == 0) printf("\n___");
             printf("%02X ", src[i]);
@@ -24,7 +27,7 @@ static void DUMP(const uint8_t *src, uint8_t len) {
         printf("<- ");
     }
 }
-#define PRINTF  if (TRACE > 1) printf
+#define PRINTF  if (MOLE_TRACE > 1) printf
 #define PRINTf  printf
 #else
 static void DUMP(const uint8_t *src, uint8_t len) {}
@@ -34,13 +37,12 @@ static void DUMP(const uint8_t *src, uint8_t len) {}
 
 #define BLOCK_SHIFT 6
 
-// Note: txbuf is bigger than needed, it should be 16 bytes
-
 // -----------------------------------------------------------------------------
 // Mole
 
 static uint32_t context_memory[MOLE_ALLOC_MEM_UINT32S];
 static int allocated_uint32s;
+static const uint8_t KHK[] = KEYHASH_KEY;
 
 static void * Allocate(int bytes) {
 	void * r = (void *)&context_memory[allocated_uint32s];
@@ -55,7 +57,7 @@ static int testHMAC(port_ctx *ctx, const uint8_t *buf) {
 
 static int testKey(port_ctx *ctx, const uint8_t *key) {
     DUMP(&key[0], MOLE_KEYSET_HMAC);    PRINTF("keyset data\n");
-    ctx->hInitFn((void *)&*ctx->rhCtx, &key[32], 16, MOLE_KEY_HASH_KEY);
+    ctx->hInitFn((void *)&*ctx->rhCtx, KHK, 16, 0);
     for (int i=0; i < MOLE_KEYSET_HMAC; i++) {
         ctx->hputcFn((void *)&*ctx->rhCtx, key[i]);
     }
@@ -105,7 +107,7 @@ static void SendTxBuf(port_ctx *ctx) {
 
 // Send: Tag[1]
 static void SendHeader(port_ctx *ctx, int tag) {
-    ctx->hInitFn((void *)&*ctx->thCtx, &ctx->key[32], MOLE_HMAC_LENGTH, ctx->hctrTx);
+    ctx->hInitFn((void *)&*ctx->thCtx, ctx->hmackey, MOLE_HMAC_LENGTH, ctx->hctrTx);
     SendByte(ctx, tag);                         // Header consists of a TAG byte,
 }
 
@@ -153,7 +155,7 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
         }
     }
     memcpy(&ctx->hctrRx, cIV, 8);
-    PRINTF("\n%s sending IV, tag=%d, ", ctx->name, tag);
+    PRINTf("\n%s sending IV, tag=%d, ", ctx->name, tag);
     SendHeader(ctx, tag);                       // TAG (also resets HMAC)
 #if (MOLE_IV_LENGTH == 16)
     Send16(ctx, mIV);
@@ -163,7 +165,7 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("New %s.hctrRx",ctx->name);
     DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("Current %s.hctrTx",ctx->name);
     DUMP((uint8_t*)mIV, MOLE_IV_LENGTH); PRINTF("used by %s to encrypt cIV\n",ctx->name);
-    ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->key, mIV);
+    ctx->cInitFn ((void *)&*ctx->tcCtx, ctx->cryptokey, mIV);
     ctx->cBlockFn((void *)&*ctx->tcCtx, cIV, mIV, 0);
 #if (MOLE_IV_LENGTH == 16)
     Send16(ctx, mIV);
@@ -172,14 +174,103 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
 #endif
     Send2(ctx, ctx->rBlocks);                   // RX buffer size[2]
     SendTxHash(ctx, MOLE_END_UNPADDED);       // HMAC
-    ctx->cInitFn((void *)&*ctx->tcCtx, ctx->key, cIV);
+    ctx->cInitFn((void *)&*ctx->tcCtx, ctx->cryptokey, cIV);
     ctx->tReady = 1;
     return 0;
 }
 
+// Arbitrary length message streaming is similar to file output.
+// Do not guarantee delivery, just send and forget. This scheme assumes a host PC
+// with a large rxbuf, so it will get the data. Otherwise, the HMAC is dropped.
+
+static int NewStream(port_ctx *ctx) {
+    ctx->counter = 0;
+    ctx->prevblock = 0;
+    ctx->rReady = 0;
+    ctx->tReady = 0;
+    ctx->hctrTx = 0;
+    SendBoiler(ctx);                          // include ID information for keying
+    int r = SendIV(ctx, MOLE_TAG_IV_A);       // and an encrypted IV
+    return r;
+}
+
+int moleTxInit(port_ctx *ctx) {               // use if not paired
+    return NewStream(ctx);
+}
+
+static void moleSendInit(port_ctx *ctx, uint8_t type) {
+    SendHeader(ctx, MOLE_TAG_MESSAGE);
+    ctx->txbuf[0] = type;
+    ctx->txidx = 1;
+}
+
+static void moleSendChar(port_ctx *ctx, uint8_t c) {
+    int i = ctx->txidx;
+    ctx->txbuf[i] = c;
+    i = (i + 1) & 0x0F;
+    ctx->txidx = i;
+    if (!i) SendTxBuf(ctx);
+}
+
+static void moleSendFinal(port_ctx *ctx) {
+    ctx->txbuf[15] = ctx->txidx;
+    SendTxBuf(ctx);
+    SendTxHash(ctx, MOLE_END_UNPADDED);
+}
+
+static void moleSendMsg(port_ctx *ctx, const uint8_t *src, int len, int type) {
+    moleSendInit(ctx, type);
+    while (len--) moleSendChar(ctx, *src++);
+    moleSendFinal(ctx);
+}
+
+
+// Encrypt and send a key set
+static int moleReKeyRequest(port_ctx *ctx, const uint8_t *key, int tag){
+    if (moleAvail(ctx) < MOLE_KEYSET_LENGTH) return MOLE_ERROR_MSG_NOT_SENT;
+    moleSendMsg(ctx, key, MOLE_KEYSET_LENGTH, tag);
+    return 0;
+}
+
+// Derive various keys from the system passcode
+// If KEY_HASH_KEY is not really secret, an attecker can get the keys from the passcode.
+// However, the system passcode cannot be obtained from the keys.
+
+#define MaxKDFhashSize 32
+static uint8_t KDFbuffer[MaxKDFhashSize];
+static int KDFiterations;
+
+static int KDF (port_ctx *ctx, uint8_t *dest, const uint8_t *key, int length, int iterations) {
+    if (length > MaxKDFhashSize) return MOLE_ERROR_KDFBUF_TOO_SMALL;
+    if (KDFiterations > iterations) KDFiterations = 0;
+    if (KDFiterations == 0) memcpy(KDFbuffer, key, length);
+    int n = iterations - KDFiterations;
+    while (n--) {
+        ctx->hInitFn((void *)&*ctx->rhCtx, KHK, length, 0);
+        for (int i = 0; i < length; i++) {
+            ctx->hputcFn((void *)&*ctx->rhCtx, KDFbuffer[i]);
+        }
+        ctx->hFinalFn((void *)&*ctx->rhCtx, KDFbuffer);
+    }
+    KDFiterations = iterations;
+    memcpy(dest, KDFbuffer, length);
+    DUMP(KDFbuffer, length); PRINTF("KDF output ");
+    return 0;
+}
+
+static int moleNewKeys(port_ctx *ctx, const uint8_t *key) {
+    int r = testKey(ctx, key);
+    if (r) return r;
+    KDFiterations = 0;
+    r |= KDF(ctx, ctx->adminpasscode, &key[32], MOLE_ADMINPASS_LENGTH, 55);
+    KDFiterations = 0;
+    r |= KDF(ctx, ctx->hmackey,       key, MOLE_HMAC_KEY_LENGTH, 50);
+    r |= KDF(ctx, ctx->cryptokey,     key, MOLE_ENCR_KEY_LENGTH, 60);
+    return r;
+}
+
 #define PREAMBLE_SIZE 2
 #define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (MOLE_HMAC_LENGTH + PREAMBLE_SIZE))
-
 
 // -----------------------------------------------------------------------------
 // Public functions
@@ -199,11 +290,6 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
     ctx->plainFn = plain;                       // plaintext output handler
     ctx->ciphrFn = ciphr;                       // ciphertext output handler
     ctx->boilrFn = boiler;                      // boilerplate output handler
-    ctx->key = key;
-    ctx->WrKeyFn = WrKeyFn;
-    ctx->rngFn = rngFn;
-    ctx->boil = boilerplate;                    // counted string
-    ctx->name = name;                           // Zstring name for debugging
     ctx->rxbuf = Allocate(rxBlocks << BLOCK_SHIFT);
     ctx->rBlocks = rxBlocks;                    // block size (1<<BLOCK_SHIFT) bytes
     if (rxBlocks < 2) return MOLE_ERROR_BUF_TOO_SMALL;
@@ -220,7 +306,11 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
         ctx->cBlockFn = xc_crypt_block_g;
     }
     if (ALLOC_HEADROOM < 0) return MOLE_ERROR_OUT_OF_MEMORY;
-    return testKey(ctx, key);
+    ctx->WrKeyFn = WrKeyFn;
+    ctx->rngFn = rngFn;
+    ctx->boil = boilerplate;                    // counted string
+    ctx->name = name;                           // Zstring name for debugging
+    return moleNewKeys(ctx, key);
 }
 
 int moleRAMused (int ports) {
@@ -232,7 +322,7 @@ int moleRAMunused (void) {
 }
 
 void molePair(port_ctx *ctx) {
-    PRINTF("\n%s sending Pairing request, ", ctx->name);
+    PRINTf("\n%s sending Pairing request, ", ctx->name);
     ctx->rReady = 0;
     ctx->tReady = 0;
     SendHeader(ctx, MOLE_TAG_RESET);
@@ -240,7 +330,7 @@ void molePair(port_ctx *ctx) {
 }
 
 void moleBoilerReq(port_ctx *ctx) {
-    PRINTF("\n%s sending Boilerplate request, ", ctx->name);
+    PRINTf("\n%s sending Boilerplate request, ", ctx->name);
     SendHeader(ctx, MOLE_TAG_GET_BOILER);
     SendEnd(ctx);
 }
@@ -248,9 +338,9 @@ void moleBoilerReq(port_ctx *ctx) {
 // Send: Tag[1], password[16], HMAC[]
 void moleAdmin(port_ctx *ctx) {
     uint8_t m[16];
-    PRINTF("\n%s sending Admin password, ", ctx->name);
+    PRINTf("\n%s sending Admin passcode, ", ctx->name);
     SendHeader(ctx, MOLE_TAG_ADMIN);
-    ctx->cBlockFn((void *)&*ctx->tcCtx, &ctx->key[64], m, 0);
+    ctx->cBlockFn((void *)&*ctx->tcCtx, ctx->adminpasscode, m, 0);
     Send16(ctx, m);
     SendTxHash(ctx, MOLE_END_UNPADDED);
 }
@@ -304,7 +394,7 @@ int molePutc(port_ctx *ctx, uint8_t c){
             ctx->rReady = 0;
             ctx->tReady = 0;
         }
-        ctx->hInitFn((void *)&*ctx->rhCtx, &ctx->key[32], MOLE_HMAC_LENGTH, ctx->hctrRx);
+        ctx->hInitFn((void *)&*ctx->rhCtx, ctx->hmackey, MOLE_HMAC_LENGTH, ctx->hctrRx);
         ctx->hputcFn((void *)&*ctx->rhCtx, c);
         ctx->tag = c;
         ctx->MACed = 0;
@@ -339,8 +429,8 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
     case GET_IV:
         ctx->rxbuf[ctx->ridx++] = c;
         if (ctx->ridx == MOLE_IV_LENGTH) {
-            PRINTF("\nSet temporary IV for decrypting the secret IV ");
-            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->key, ctx->rxbuf);
+            PRINTf("\nSet temporary IV for decrypting the secret IV ");
+            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->cryptokey, ctx->rxbuf);
             ctx->state = GET_PAYLOAD;
         }
         goto noend;
@@ -392,11 +482,11 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
                 r = MOLE_ERROR_INVALID_LENGTH;
                 break;
             }
-            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->key, &ctx->rxbuf[MOLE_IV_LENGTH]);
+            ctx->cInitFn ((void *)&*ctx->rcCtx, ctx->cryptokey, &ctx->rxbuf[MOLE_IV_LENGTH]);
             memcpy(&ctx->hctrTx, &ctx->rxbuf[MOLE_IV_LENGTH], 8);
             memcpy(&ctx->avail, &ctx->rxbuf[2*MOLE_IV_LENGTH], 2);
             ctx->rReady = 1;
-            PRINTF("\nReceived IV, tag=%d; ", ctx->tag);
+            PRINTf("\nReceived IV, tag=%d; ", ctx->tag);
             DUMP((uint8_t*)&ctx->hctrRx, 8); PRINTF("Received HMAC hctrRx, ");
             DUMP((uint8_t*)&ctx->rxbuf[MOLE_IV_LENGTH], 16); PRINTF("Private cIV, ");
             if (ctx->tag == MOLE_TAG_IV_A) {
@@ -406,26 +496,38 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         case MOLE_TAG_ADMIN:
             ctx->admin = 0;
             if (r) break;
-            DUMP(&ctx->key[64], 16); PRINTF("Expected Password");
+            DUMP(ctx->adminpasscode, 16); PRINTF("Expected Password");
             DUMP(ctx->rxbuf, 16);    PRINTF("Actual Password");
-            if (memcmp(ctx->rxbuf, &ctx->key[64], 16) == 0) ctx->admin = 0x55;
+            if (memcmp(ctx->rxbuf, ctx->adminpasscode, 16) == 0) ctx->admin = 0x55;
             break;
         case MOLE_TAG_MESSAGE:
             if (r) {
-                molePair(ctx);                // assume synchronization is lost
+                molePair(ctx);                  // assume synchronization is lost
             } else {
-                if (c == MOLE_MSG_NEW_KEY) {
-                    PRINTF("\nTesting the new key");
+                switch(c) {
+                case MOLE_MSG_MESSAGE:
+                    i = ctx->rxbuf[temp - 1];   // remainder
+                    temp = temp + i - 17;       // trim padding
+                    ctx->plainFn(&ctx->rxbuf[1], temp);
+                    break;
+                case MOLE_MSG_NEW_KEY:
+                case MOLE_MSG_REKEYED:
+                    PRINTf("\n%s is testing the new key", ctx->name);
                     temp = testKey(ctx, &ctx->rxbuf[1]);
                     if (temp) return temp;      // bad key
                     k = ctx->WrKeyFn(&ctx->rxbuf[1]);
-                    c = 0;
                     if (k == NULL) return 0;    // no key
-                    return MOLE_ERROR_REKEYED;
+                    if (c == MOLE_MSG_NEW_KEY) {
+                        moleReKeyRequest(ctx, k, MOLE_MSG_REKEYED);
+                    }
+                    moleNewKeys(ctx, k);        // re-key locally
+                    PRINTf("\n%s has been re-keyed", ctx->name);
+                    if (r) return r;
+                    r = MOLE_ERROR_REKEYED;     // say "you've been re-keyed"
+                    break;
+                default:
+                    r = 0;
                 }
-                i = ctx->rxbuf[temp - 1];       // remainder
-                temp = temp + i - 17;           // trim padding
-                ctx->plainFn(&ctx->rxbuf[1], temp);
             }
             break;
         default: break;
@@ -444,17 +546,6 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
 void moleFileInit (port_ctx *ctx) {
     SendHeader(ctx, MOLE_TAG_RAWTX);
     SendByte(ctx, MOLE_LENGTH_UNKNOWN);
-}
-
-static int NewStream(port_ctx *ctx) {
-    ctx->counter = 0;
-    ctx->prevblock = 0;
-    ctx->rReady = 0;
-    ctx->tReady = 0;
-    ctx->hctrTx = 0;
-    SendBoiler(ctx);                          // include ID information for keying
-    int r = SendIV(ctx, MOLE_TAG_IV_A);       // and an encrypted IV
-    return r;
 }
 
 int moleFileNew(port_ctx *ctx) {              // start a new one-way message
@@ -484,40 +575,6 @@ void moleFileOut (port_ctx *ctx, const uint8_t *src, int len) {
     }
 }
 
-// Arbitrary length message streaming is similar to file output.
-// Do not guarantee delivery, just send and forget. This scheme assumes a host PC
-// with a large rxbuf, so it will get the data. Otherwise, the HMAC is dropped.
-
-int moleTxInit(port_ctx *ctx) {               // use if not paired
-    return NewStream(ctx);
-}
-
-static void moleSendInit(port_ctx *ctx, uint8_t type) {
-    SendHeader(ctx, MOLE_TAG_MESSAGE);
-    ctx->txbuf[0] = type;
-    ctx->txidx = 1;
-}
-
-static void moleSendChar(port_ctx *ctx, uint8_t c) {
-    int i = ctx->txidx;
-    ctx->txbuf[i] = c;
-    i = (i + 1) & 0x0F;
-    ctx->txidx = i;
-    if (!i) SendTxBuf(ctx);
-}
-
-static void moleSendFinal(port_ctx *ctx) {
-    ctx->txbuf[15] = ctx->txidx;
-    SendTxBuf(ctx);
-    SendTxHash(ctx, MOLE_END_UNPADDED);
-}
-
-static void moleSendMsg(port_ctx *ctx, const uint8_t *src, int len, int type) {
-    moleSendInit(ctx, type);
-    while (len--) moleSendChar(ctx, *src++);
-    moleSendFinal(ctx);
-}
-
 int moleSend(port_ctx *ctx, const uint8_t *src, int len) {
     moleSendMsg(ctx, src, len, MOLE_MSG_MESSAGE);
 //  if (ctx->counter > 1023) return moleTxInit(ctx);
@@ -526,7 +583,5 @@ int moleSend(port_ctx *ctx, const uint8_t *src, int len) {
 
 // Encrypt and send a key set
 int moleReKey(port_ctx *ctx, const uint8_t *key){
-    if (moleAvail(ctx) < MOLE_KEYSET_LENGTH) return MOLE_ERROR_MSG_NOT_SENT;
-    moleSendMsg(ctx, key, MOLE_KEYSET_LENGTH, MOLE_MSG_NEW_KEY);
-    return 0;
+    return moleReKeyRequest(ctx, key, MOLE_MSG_NEW_KEY);
 }

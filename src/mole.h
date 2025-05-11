@@ -6,48 +6,53 @@
 #include "blake2s/src/blake2s.h"
 
 #ifndef MOLE_ALLOC_MEM_UINT32S
-#define MOLE_ALLOC_MEM_UINT32S   4096 /* longs for context memory */
+#define MOLE_ALLOC_MEM_UINT32S      4096 /* longs for context memory */
 #endif
-#define MOLE_KEY_HASH_KEY        0ull /* 8-byte keyset master key */
-#define MOLE_FILE_MESSAGE_SIZE      9 /* Log2 of file message block */
+#define MOLE_FILE_MESSAGE_SIZE         9 /* Log2 of file message block */
 
-#define MOLE_IV_LENGTH             16 /* Bytes in IV, should be 16 */
-#define MOLE_HMAC_LENGTH           16 /* Bytes in HMAC, may be 8 or 16 */
-#define MOLE_KEYSET_LENGTH        160 /* ..., hmac16 */
+#define MOLE_IV_LENGTH                16 /* Bytes in IV, should be 16 */
+#define MOLE_HMAC_LENGTH              16 /* Bytes in HMAC, may be 8 or 16 */
+#define MOLE_HMAC_KEY_LENGTH          32 /* signature key length in bytes */
+#define MOLE_ENCR_KEY_LENGTH          32 /* encryption key length in bytes */
+#define MOLE_ADMINPASS_LENGTH         16 /* administrator password length in bytes */
+#define MOLE_KEYSET_LENGTH            64 /* userpass[32], adminpass[16], hmac[16] */
 #define MOLE_KEYSET_HMAC  (MOLE_KEYSET_LENGTH - MOLE_HMAC_LENGTH)
 
 // Message tags
-#define MOLE_TAG_END             0x0A /* signal end of message (don't change) */
-#define MOLE_ESCAPE              0x0B
-#define MOLE_HMAC_TRIGGER        0x02 /* 2nd char of escape sequence, triggers HMAC */
-#define MOLE_TAG_GET_BOILER      0x14 /* request boilerplate */
-#define MOLE_TAG_BOILERPLATE     0x15 /* boilerplate */
-#define MOLE_TAG_RESET           0x16 /* trigger a 2-way IV init */
-#define MOLE_TAG_MESSAGE         0x17 /* signal an encrypted message */
-#define MOLE_TAG_IV_A            0x18 /* signal a 2-way IV init */
-#define MOLE_TAG_IV_B            0x19 /* signal a 1-way IV init */
-#define MOLE_TAG_ADMIN           0x1A /* admin password (random 128-bit number) */
-#define MOLE_TAG_RAWTX           0x1F /* Raw non-repeatable AEAD message */
+#define MOLE_TAG_END                0x0A /* signal end of message (don't change) */
+#define MOLE_ESCAPE                 0x0B
+#define MOLE_HMAC_TRIGGER           0x02 /* 2nd char of escape sequence, triggers HMAC */
+#define MOLE_TAG_GET_BOILER         0x14 /* request boilerplate */
+#define MOLE_TAG_BOILERPLATE        0x15 /* boilerplate */
+#define MOLE_TAG_RESET              0x16 /* trigger a 2-way IV init */
+#define MOLE_TAG_MESSAGE            0x17 /* signal an encrypted message */
+#define MOLE_TAG_IV_A               0x18 /* signal a 2-way IV init */
+#define MOLE_TAG_IV_B               0x19 /* signal a 1-way IV init */
+#define MOLE_TAG_ADMIN              0x1A /* admin password (random 128-bit number) */
+#define MOLE_TAG_RAWTX              0x1F /* Raw non-repeatable AEAD message */
 
-#define MOLE_MSG_MESSAGE         0x00
-#define MOLE_MSG_NEW_KEY         0xAA
-#define MOLE_LENGTH_UNKNOWN      0x01
-#define MOLE_END_UNPADDED           0
-#define MOLE_END_PADDED             1
+#define MOLE_MSG_MESSAGE            1
+#define MOLE_MSG_NEW_KEY            2
+#define MOLE_MSG_REKEYED            3
+
+#define MOLE_LENGTH_UNKNOWN         0x01
+#define MOLE_END_UNPADDED              0
+#define MOLE_END_PADDED                1
 
 // Error tags
-#define MOLE_ERROR_INVALID_STATE    1 /* FSM reached an invalid state */
-#define MOLE_ERROR_UNKNOWN_CMD      2 /* Command not recognized */
-#define MOLE_ERROR_TRNG_FAILURE     3 /* Bad RNG value */
-#define MOLE_ERROR_MISSING_KEY      4
-#define MOLE_ERROR_BAD_HMAC         5
-#define MOLE_ERROR_INVALID_LENGTH   6
-#define MOLE_ERROR_LONG_BOILERPLT   7
-#define MOLE_ERROR_MSG_TRUNCATED    8
-#define MOLE_ERROR_OUT_OF_MEMORY    9
-#define MOLE_ERROR_REKEYED         10
-#define MOLE_ERROR_MSG_NOT_SENT    11
-#define MOLE_ERROR_BUF_TOO_SMALL   12
+#define MOLE_ERROR_INVALID_STATE       1 /* FSM reached an invalid state */
+#define MOLE_ERROR_UNKNOWN_CMD         2 /* Command not recognized */
+#define MOLE_ERROR_TRNG_FAILURE        3 /* Bad RNG value */
+#define MOLE_ERROR_MISSING_KEY         4
+#define MOLE_ERROR_BAD_HMAC            5
+#define MOLE_ERROR_INVALID_LENGTH      6
+#define MOLE_ERROR_LONG_BOILERPLT      7
+#define MOLE_ERROR_MSG_TRUNCATED       8
+#define MOLE_ERROR_OUT_OF_MEMORY       9
+#define MOLE_ERROR_REKEYED            10
+#define MOLE_ERROR_MSG_NOT_SENT       11
+#define MOLE_ERROR_BUF_TOO_SMALL      12
+#define MOLE_ERROR_KDFBUF_TOO_SMALL   13
 
 enum States {
   IDLE = 0,
@@ -102,8 +107,10 @@ typedef struct
     crypt_blockFn cBlockFn; // Encryption block function
     uint64_t hctrRx;        // HMAC counters
     uint64_t hctrTx;
+    uint8_t cryptokey[MOLE_ENCR_KEY_LENGTH];
+    uint8_t hmackey[MOLE_HMAC_KEY_LENGTH];
+    uint8_t adminpasscode[MOLE_ADMINPASS_LENGTH];
     const uint8_t *boil;    // boilerplate
-    const uint8_t *key;     // encryption/decryption key[32] and HMAC key[16]
     uint8_t *rxbuf;
     uint8_t txbuf[16];
     enum States state;      // of the FSM
@@ -159,7 +166,7 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
 int molePutc(port_ctx *ctx, uint8_t c);
 
 
-/** Send an IV to enable moleSend
+/** Send an IV to enable moleSend, needed if not paired
  * @param ctx   Port identifier
  */
 int moleTxInit(port_ctx *ctx);

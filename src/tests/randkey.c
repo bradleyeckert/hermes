@@ -6,6 +6,7 @@
 #include "../xchacha/src/xchacha.h"
 #include "../blake2s/src/blake2s.h"
 #include "../mole.h"
+#include "../moleconfig.h"
 
 #define MaximumKeys 32
 
@@ -13,6 +14,8 @@ static uint8_t getc_RNG(void) {
     rand();
     return rand() & 0xFF;
 }
+
+static const uint8_t KHK[] = KEYHASH_KEY;
 
 blake2s_state hCtx; // HMAC context
 char *keyname[MaximumKeys];
@@ -34,14 +37,14 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < keys; i++) {
         uint8_t k[MOLE_KEYSET_LENGTH];
         for (int i=0; i < MOLE_KEYSET_LENGTH; i++) k[i] = getc_RNG();
-        b2s_hmac_init(&hCtx, &k[32], 16, MOLE_KEY_HASH_KEY);
+        b2s_hmac_init(&hCtx, KHK, 16, 0);
         for (int i=0; i < (MOLE_KEYSET_HMAC); i++) {
             b2s_hmac_putc(&hCtx, k[i]);
         }
         b2s_hmac_final(&hCtx, &k[MOLE_KEYSET_HMAC]);
         printf("#define %s { ", keyname[i]);
         for (uint8_t i = 0; i < MOLE_KEYSET_LENGTH; i++) {
-            if ((i % 16) == 0) printf("\\ \n  ");
+            if ((i % 16) == 0) printf("\\\n  ");
             printf("0x%02X", k[i]);
             if (i != (MOLE_KEYSET_LENGTH-1)) printf(", ");
         }

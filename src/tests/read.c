@@ -4,18 +4,48 @@
 #include <stdio.h>
 #include "../xchacha/src/xchacha.h"
 #include "../blake2s/src/blake2s.h"
-#include "../testkeys.h"
+#include "../moleconfig.h"
 
-const uint8_t my_encryption_key[] = TESTKEY_2;
-
-#define my_signature_key  (&my_encryption_key[32])
+static const uint8_t keyset[] = TESTKEY_2;
+static const uint8_t KHK[] = KEYHASH_KEY;
 
 #define FILENAME "demofile.bin"
 
-// Decode a file created by moletest.c
-
 xChaCha_ctx   cCtx; // encryption context
 blake2s_state hCtx; // HMAC context
+uint8_t cryptokey[32];
+uint8_t hmackey[32];
+
+// KDF adapted from mole.c:
+
+#define MaxKDFhashSize 32
+static uint8_t KDFbuffer[32];
+static int KDFiterations;
+
+static void KDF (uint8_t *dest, const uint8_t *key, int length, int iterations) {
+    if (KDFiterations > iterations) KDFiterations = 0;
+    if (KDFiterations == 0) memcpy(KDFbuffer, key, length);
+    int n = iterations - KDFiterations;
+    while (n--) {
+        b2s_hmac_init(&hCtx, KHK, length, 0);
+        for (int i = 0; i < length; i++) {
+            b2s_hmac_putc(&hCtx, KDFbuffer[i]);
+        }
+        b2s_hmac_final(&hCtx, KDFbuffer);
+    }
+    KDFiterations = iterations;
+    memcpy(dest, KDFbuffer, length);
+}
+
+static void moleNewKeys(const uint8_t *key) {
+    KDFiterations = 0;
+    KDF(hmackey,   key, 32, 50);
+    KDF(cryptokey, key, 32, 60);
+}
+
+
+// Decode a file created by moletest.c
+
 uint64_t hctr;      // HMAC counter
 FILE* file;         // input file
 uint8_t HMAC[16];   // captured HMAC
@@ -83,24 +113,25 @@ int main(int argc, char *argv[]) {
         printf("\nError opening file!");
         return 1;
     }
+    moleNewKeys(keyset);
     SkipEndTag();                               // skip boilerplate
 //    SkipEndTag();
     printf("\nBegin CHALLENGE message at 0x%X ", (unsigned int)ftell(file));
     hctr = 0;
-    b2s_hmac_init(&hCtx, my_signature_key, 16, hctr);
+    b2s_hmac_init(&hCtx, hmackey, 16, hctr);
     if (NextChar() != 0x18) {
         printf("\nError: Couldn't find challenge tag");
         goto end;
     }
     NextBlock(IV);
     dump(IV, 16); printf("mIV (visible, but used once to encrypt cIV)");
-    xc_crypt_init(&cCtx, my_encryption_key, IV);// set up to decrypt cIV
+    xc_crypt_init(&cCtx, cryptokey, IV);// set up to decrypt cIV
     NextBlock(IV);
     NextChar();                                 // ignore 'avail' field
     NextChar();
     xc_crypt_block(&cCtx, IV, IV, 1);           // mIV --> cIV
     memcpy(&hctr, IV, 8);                       // initial IV and hctr
-    xc_crypt_init(&cCtx, my_encryption_key, IV);
+    xc_crypt_init(&cCtx, cryptokey, IV);
     dump(IV, 16); printf("cIV (private)");
     dump((uint8_t*)&hctr, 8); printf("Initial 64-bit HMAC counter");
     if (NextBlock(IV)) {
@@ -122,7 +153,7 @@ int main(int argc, char *argv[]) {
     printf("\nDecryption stream has been initialized, fp=0x%X ", (unsigned int)ftell(file));
 // Begin RAW PACKET messages
     while(1) {
-        b2s_hmac_init(&hCtx, my_signature_key, 16, hctr);
+        b2s_hmac_init(&hCtx, hmackey, 16, hctr);
         int c = NextChar();
         if (c < 0) {
             printf("\nFINISHED!");

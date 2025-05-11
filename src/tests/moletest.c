@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "../mole.h"
-#include "../testkeys.h"
+#include "../moleconfig.h"
 
 // -----------------------------------------------------------------------------
 // Some default values for testing
@@ -44,6 +44,7 @@ static char* errorCode(int e) {
     case MOLE_ERROR_OUT_OF_MEMORY:   return "Insufficient MOLE_ALLOC_MEM_UINT32S";
     case MOLE_ERROR_REKEYED:         return "Keys were changed";
     case MOLE_ERROR_BUF_TOO_SMALL:   return "Buffer blocks must be at least 2";
+    case MOLE_ERROR_KDFBUF_TOO_SMALL:return "KDFbuffer is too small";
     default: return "unknown";
     }
 }
@@ -145,8 +146,8 @@ int SendBob(int msgID) {
 }
 
 void PairAlice(void) {
-    printf("\nAlice is pairing with keys ");
-    for (int i=0; i<64; i++) printf("%02x", Alice.key[i]);
+    printf("\nAlice is pairing with key ");
+    for (int i=0; i<32; i++) printf("%02x", Alice.cryptokey[i]);
     molePair(&Alice);
     if (Alice.hctrTx != Bob.hctrRx) printf("\nERROR: Alice cannot send to Bob");
     if (Bob.hctrTx != Alice.hctrRx) printf("\nERROR: Bob cannot send to Alice");
@@ -182,40 +183,17 @@ int getc_RNG(void) {
 	return rand() & 0xFF;	// DO NOT USE in a real application
 }                           // Use a TRNG instead
 
-//    ctx->hInitFn((void *)&*ctx->rhCtx, &key[32], 16, MOLE_KEY_HASH_KEY);
-//    for (int i=0; i < 48; i++) ctx->hputcFn((void *)&*ctx->rhCtx, key[i]);
-//    ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
-
-void makeKey(int kind) {        // printf a random key set, with HMAC
-    uint8_t k[MOLE_KEYSET_LENGTH];
-    for (int i=0; i < MOLE_KEYSET_LENGTH; i++) k[i] = getc_RNG();
-    Alice.hInitFn((void*)Alice.rhCtx, &k[32], 16, MOLE_KEY_HASH_KEY);
-    for (int i=0; i < (MOLE_KEYSET_HMAC); i++) {
-        Alice.hputcFn((void*)Alice.rhCtx, k[i]);
-    }
-    Alice.hFinalFn((void*)Alice.rhCtx, &k[MOLE_KEYSET_HMAC]);
-    printf("uint8_t my_keys[%d] = {", MOLE_KEYSET_LENGTH);
-    for (uint8_t i = 0; i < MOLE_KEYSET_LENGTH; i++) {
-        if ((i % 16) == 0) printf("\n  ");
-        printf("0x%02X", k[i]);
-        if (i != (MOLE_KEYSET_LENGTH-1)) printf(",");
-    }
-    printf("};\n");
-}
-
 int main() {
     int tests = 0x1FF;      // enable these tests...
 //    snoopy = 1;             // display the wire traffic
     moleNoPorts();
-    int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 5, getc_RNG,
+    int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, getc_RNG,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, my_keys, UpdateKeySet);
-    if (!ior) ior = moleAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 5, getc_RNG,
+    if (!ior) ior = moleAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, getc_RNG,
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, my_keys, UpdateKeySet);
-//    for (int i=0; i<5; i++) makeKey(0);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));
-        printf("too small by %d ", -moleRAMunused()/4);
-        printf("or the key has a bad HMAC");
+        if (ior == MOLE_ERROR_OUT_OF_MEMORY) printf("too small by %d ", -moleRAMunused()/4);
         return ior;
     }
     printf("Static context RAM usage: %d bytes per port\n", moleRAMused(2)/2);
