@@ -9,12 +9,14 @@ I wrote `mole` for three reasons:
 
 It uses pre-arranged private keys, so it can output encrypted messages without a 2-way handshake. Boot messages sent out the UART will appear as gibberish unless the receiver looks up the private keys from its key store and decrypts the message stream.
 
-Making the UART connector easily accessible does not reduce cybersecurity in any way. Without the keys, it is totally locked down.
+Making the UART connector easily accessible does not reduce cybersecurity in any way. Without the keyset, it is totally locked down.
 
 ## Tests
 `moletest.c` - A simulation of two ports connected by a noisy null-modem cable
 
 `read.c` - Code for decrypting the `demofile.bin` created by `test.c`
+
+`randkey.c` - Utility to generate a random keyset: 32-byte user passcode, 16-byte admin passcode, and 16-byte HMAC total 64 bytes.
 
 ## Folder structure
 

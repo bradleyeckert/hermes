@@ -1,14 +1,28 @@
 # Mole - Cryptographic protection for serial ports
 
-Cybersecurity for embedded systems is now a thing. In many markets, encryption is mandated for data crossing enclosure boundaries. `mole` encrypts UART traffic using a small memory footprint. While it uses xchacha20-blake2s for AEAD by default, other encryption and HMAC schemes are easily added (AES-SHA, SH4-SH3, etc).
+Cybersecurity for embedded systems is now a thing.
+In many markets, encryption is mandated for data crossing enclosure boundaries.
+`mole` encrypts UART traffic using a small memory footprint.
+While it uses xchacha20-blake2s for AEAD by default, other encryption and HMAC schemes are easily added (AES-SHA, SH4-SH3, etc).
 
-`mole` achieves its small footprint by not trying to copy the SSL/TLS usage model that was made for the Internet. The usage model is closer to that of NFT cards like Mifare DESFire: many cards, few readers. A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it. Likewise, one of the devices using Mole is assumed to have an Internet connection for getting the required keys from a remote server or key vault. In other words, `mole` uses a closed ecosystem.
+`mole` achieves its small footprint by not trying to copy the SSL/TLS usage model that was made for the Internet.
+The usage model is closer to that of NFT cards like Mifare DESFire: many cards, few readers.
+A Mifare card reader is expected to have network connectivity so it can get the required key from a server if it doesn't already have it.
+Likewise, one of the devices using Mole is assumed to have an Internet connection for getting the required keys from a remote server or key vault.
+In other words, `mole` uses a closed ecosystem.
 
-Manufacturers already operate a closed ecosystem for their products. `mole` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field. A secure channel facilitates update pushing, which is another emerging cybersecurity requirement. Pre-shared keys avoid PKE. Without PKE, there is no spoofing.
+Manufacturers already operate a closed ecosystem for their products.
+`mole` is meant more for manufacturers who need a UART to securely access their systems remotely or in the field.
+A secure channel facilitates update pushing, which is another emerging cybersecurity requirement.
+Pre-shared keys avoid PKE. Without PKE, there is no spoofing.
 
-The tradeoff between pre-shared vs public keys is influenced by advanced Man-in-The-Middle (MiTM) spoofing [tools](https://slava-moskvin.medium.com/extracting-firmware-every-method-explained-e94aa094d0dd) that create self-signed HTTPS certificates. There are also tools to defeat SSL pinning. The problems with key escrow, mostly centered on trust, would not be solved with PKE and certificates. A manufacturer can brick your device either way. One-way encrypted messages, such as those stored in files, do not support key exchange, which rules out PKE.
+The tradeoff between pre-shared vs public keys is influenced by advanced Man-in-The-Middle (MiTM) spoofing [tools](https://slava-moskvin.medium.com/extracting-firmware-every-method-explained-e94aa094d0dd) that create self-signed HTTPS certificates.
+There are also tools to defeat SSL pinning. The problems with key escrow, mostly centered on trust, would not be solved with PKE and certificates.
+A manufacturer can brick your device either way.
+One-way encrypted messages, such as those stored in files, do not support key exchange, which rules out PKE.
 
-With pre-shared keys, an authorized user must securely log into the key server and download the key in order to pair a UART connection. Key management relies on key escrow instead. Anti-spoofing relies on the security of the escrow.
+With pre-shared keys, an authorized user must securely log into the key server and download the key in order to pair a UART connection.
+Key management relies on key escrow instead. Anti-spoofing relies on the security of the escrow.
 
 A block diagram of the Mole serial port encryption in the context of a key management system:
 ![block diagram](call-flow.drawio.png)
@@ -16,20 +30,21 @@ A block diagram of the Mole serial port encryption in the context of a key manag
 ## AEAD
 
 [Wikipedia](https://en.wikipedia.org/wiki/Authenticated_encryption):
-> Authenticated encryption with associated data (AEAD) is a variant of AE that allows the message to include "associated data" (AD, additional non-confidential information, a.k.a. "additional authenticated data", AAD). A recipient can check the integrity of both the associated data and the confidential information in a message.
+> Authenticated encryption with associated data (AEAD) is a variant of AE that allows the message to include "associated data" (AD, additional non-confidential information, a.k.a. "additional authenticated data", AAD).
+A recipient can check the integrity of both the associated data and the confidential information in a message.
 
 `mole` uses a symmetric algorithm for encryption and a HMAC (hash) algorithm for message signing.
 
-The default protocol used by `mole` is **XChaCha20-Blake2s**. Xchacha20 is a long-IV version of [ChaCha20](https://en.wikipedia.org/wiki/Salsa20). For forward compatibility, a 128-bit IV is used instead of XChaCha20's 192-bit IV. [Blake2s](https://datatracker.ietf.org/doc/html/rfc7693.html) is used as a HMAC. Its 16-byte output authenticates the entire message, including the plaintext header, so that the header cannot be altered. Originally, SipHash was going to be the HMAC, which would have been fine except for use cases where an attacker has infinite time to crack SipHash, so Blake2s is used for its stronger security.
+The default protocol used by `mole` is **XChaCha20-Blake2s**. [Blake2s](https://datatracker.ietf.org/doc/html/rfc7693.html) is used as a HMAC.
+Its 16-byte output authenticates the entire message, including the plaintext header, so that the header cannot be altered.
+The hash includes a 64-bit counter that gets incremented after each message, which rules out replay attacks.
 
-Cryptographic functions are called through function pointers held in the port's `struct`. Other AEAD algorithms may be plugged in by using the default setup as a template. To keep it simple, the following lengths are fixed:
+Cryptographic functions are called through function pointers held in the port's `struct`. Other AEAD algorithms may be plugged in by using the default setup as a template. Private keys are derived from a KDF whose 64-byte input is:
 
-- 256-bit Encryption key
-- 256-bit HMAC key
-- 128-bit Encryption IV
-- 128-bit HMAC hash
+- 256-bit Login passcode, must match on both ends to send messages.
+- 128-bit Admin passcode, must match on both ends to raise the privilege level.
+- 128-bit HMAC hash, for error-checking the passcodes.
 
-The hash includes a 64-bit counter that gets incremented after each hash, which rules out replay attacks.
 
 ## Escape sequences
 
@@ -120,12 +135,6 @@ Closing the file saves any remaining data in the block and writes the HMAC. Mole
 For example, a 24-bit stereo CODEC produces 6-byte samples. Five samples pack into 32 bytes, with 2 unused bytes (maybe used as telemetry). Any data not a multiple of 16 bytes long is padded with zeros.
 
 File reading is outside the scope of Mole. Messages can only be read from the beginning, so the utility of reading them with Mole would be limited. But, the file reading demo is `test/read.c`. The file is created by `test/test.c`.
-
-## Modern UARTs
-
-Data can be streamed out of the UART as a file stream. It is authenticated after each block. Such one-way communication doesn't care about USB latency or whether there is anything connected to the port.
-
-In the WCH platform, `printf` is built on the `int _write(int fd, char *buf, int size)` primitive. Since `size` could be anything, but is usually not much, `printf` initializes by sending a boilerplate and nonce. Each `printf` uses a non-acknowledged send. When the number of bytes sent crosses a threshold, the boilerplate and nonce may be re-sent in case the terminal got lost. Each `printf` ( or `moleStreamOut`) is one AEAD message. If the message is too big for the receive buffer the message will be lost, so make sure the receive buffer is bigger than `printf` will ever need.
 
 ## Implementation
 
