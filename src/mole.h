@@ -15,8 +15,8 @@
 #define MOLE_HMAC_KEY_LENGTH          32 /* signature key length in bytes */
 #define MOLE_ENCR_KEY_LENGTH          32 /* encryption key length in bytes */
 #define MOLE_ADMINPASS_LENGTH         16 /* administrator password length in bytes */
-#define MOLE_KEYSET_LENGTH            64 /* userpass[32], adminpass[16], hmac[16] */
-#define MOLE_KEYSET_HMAC  (MOLE_KEYSET_LENGTH - MOLE_HMAC_LENGTH)
+#define MOLE_PASSCODE_LENGTH          64 /* userpass[32], adminpass[16], hmac[16] */
+#define MOLE_PASSCODE_HMAC  (MOLE_PASSCODE_LENGTH - MOLE_HMAC_LENGTH)
 
 // Message tags
 #define MOLE_TAG_END                0x0A /* signal end of message (don't change) */

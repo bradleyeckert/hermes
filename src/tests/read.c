@@ -6,8 +6,8 @@
 #include "../blake2s/src/blake2s.h"
 #include "../moleconfig.h"
 
-static const uint8_t keyset[] = TESTKEY_2;
-static const uint8_t KHK[] = KEYHASH_KEY;
+static const uint8_t keyset[] = TESTPASS_2;
+static const uint8_t KDFpasscode[] = KDF_PASS;
 
 #define FILENAME "demofile.bin"
 
@@ -18,29 +18,26 @@ uint8_t hmackey[32];
 
 // KDF adapted from mole.c:
 
-#define MaxKDFhashSize 32
-static uint8_t KDFbuffer[32];
-static int KDFiterations;
-
-static void KDF (uint8_t *dest, const uint8_t *key, int length, int iterations) {
-    if (KDFiterations > iterations) KDFiterations = 0;
-    if (KDFiterations == 0) memcpy(KDFbuffer, key, length);
-    int n = iterations - KDFiterations;
-    while (n--) {
-        b2s_hmac_init(&hCtx, KHK, length, 0);
+static void KDF (uint8_t *dest, const uint8_t *src,
+                int length, int iterations, int reverse) {
+    uint8_t KDFbuffer[32];
+    for (int i = 0; i < length; i++) {
+        if (reverse) KDFbuffer[i] = src[length + (~i)];
+        else         KDFbuffer[i] = src[i];
+    }
+    while (iterations--) {
+        b2s_hmac_init(&hCtx, KDFpasscode, length, 0);
         for (int i = 0; i < length; i++) {
             b2s_hmac_putc(&hCtx, KDFbuffer[i]);
         }
         b2s_hmac_final(&hCtx, KDFbuffer);
     }
-    KDFiterations = iterations;
     memcpy(dest, KDFbuffer, length);
 }
 
 static void moleNewKeys(const uint8_t *key) {
-    KDFiterations = 0;
-    KDF(hmackey,   key, 32, 50);
-    KDF(cryptokey, key, 32, 60);
+    KDF(hmackey,   key, 32, 55, 0);
+    KDF(cryptokey, key, 32, 55, 1);
 }
 
 

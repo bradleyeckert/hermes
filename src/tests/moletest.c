@@ -166,8 +166,8 @@ void CharToFile(uint8_t c) {
 }
 
 // 32-byte encryption key, 32-byte MAC key, 16-byte admin password, 32-byte spare keys, 16-byte hash
-uint8_t my_keys[] = TESTKEY_1;
-const uint8_t new_keys[] = TESTKEY_2;
+uint8_t my_keys[] = TESTPASS_1;
+const uint8_t new_keys[] = TESTPASS_2;
 
 /*
 Write the key and return the address of the key (it may have changed)
@@ -175,7 +175,7 @@ Return NULL if key cannot be updated
 */
 
 uint8_t * UpdateKeySet(uint8_t* keyset) {
-    memcpy(my_keys, keyset, MOLE_KEYSET_LENGTH);
+    memcpy(my_keys, keyset, MOLE_PASSCODE_LENGTH);
 	return my_keys;
 }
 

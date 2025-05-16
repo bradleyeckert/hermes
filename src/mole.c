@@ -38,11 +38,11 @@ static void DUMP(const uint8_t *src, uint8_t len) {}
 #define BLOCK_SHIFT 6
 
 // -----------------------------------------------------------------------------
-// Mole
+// Stack for contexts whose size is unknown until run time
+// Allocate is used at startup.
 
 static uint32_t context_memory[MOLE_ALLOC_MEM_UINT32S];
 static int allocated_uint32s;
-static const uint8_t KHK[] = KEYHASH_KEY;
 
 static void * Allocate(int bytes) {
 	void * r = (void *)&context_memory[allocated_uint32s];
@@ -50,22 +50,29 @@ static void * Allocate(int bytes) {
 	return r;
 }
 
+// Key management
+
+static const uint8_t KDFhashKey[] = KDF_PASS;
+
 static int testHMAC(port_ctx *ctx, const uint8_t *buf) {
     if (memcmp(ctx->hmac, buf, 16)) return MOLE_ERROR_BAD_HMAC;
     return 0;
 }
 
 static int testKey(port_ctx *ctx, const uint8_t *key) {
-    DUMP(&key[0], MOLE_KEYSET_HMAC);    PRINTF("keyset data\n");
-    ctx->hInitFn((void *)&*ctx->rhCtx, KHK, 16, 0);
-    for (int i=0; i < MOLE_KEYSET_HMAC; i++) {
+    DUMP(&key[0], MOLE_PASSCODE_HMAC);    PRINTF("keyset data\n");
+    ctx->hInitFn((void *)&*ctx->rhCtx, KDFhashKey, 16, 0);
+    for (int i=0; i < MOLE_PASSCODE_HMAC; i++) {
         ctx->hputcFn((void *)&*ctx->rhCtx, key[i]);
     }
     ctx->hFinalFn((void *)&*ctx->rhCtx, ctx->hmac);
     DUMP(ctx->hmac, 16);  PRINTF("expected key hmac");
-    DUMP(&key[MOLE_KEYSET_HMAC], 16);   PRINTF("actual key hmac\n");
-    return testHMAC(ctx, &key[MOLE_KEYSET_HMAC]);
+    DUMP(&key[MOLE_PASSCODE_HMAC], 16);   PRINTF("actual key hmac\n");
+    return testHMAC(ctx, &key[MOLE_PASSCODE_HMAC]);
 }
+
+// Send raw binary out to the stream. Certain bytes are replaced by escape
+// sequences so MOLE_TAG_END is not streamed out by accident.
 
 static void SendByteU(port_ctx *ctx, uint8_t c) {
     if ((c & 0xFE) == MOLE_TAG_END) {         // MOLE_TAG_END or MOLE_ESCAPE
@@ -98,19 +105,6 @@ static void Send16(port_ctx *ctx, const uint8_t *src) {
     SendN(ctx, src, 16);
 }
 
-static void SendTxBuf(port_ctx *ctx) {
-    ctx->cBlockFn((void *)&*ctx->tcCtx, ctx->txbuf, ctx->txbuf, 0);
-    Send16(ctx, ctx->txbuf);
-}
-
-#define ivADlength  2                           /* Associated data length */
-
-// Send: Tag[1]
-static void SendHeader(port_ctx *ctx, int tag) {
-    ctx->hInitFn((void *)&*ctx->thCtx, ctx->hmackey, MOLE_HMAC_LENGTH, ctx->hctrTx);
-    SendByte(ctx, tag);                         // Header consists of a TAG byte,
-}
-
 static void SendEnd(port_ctx *ctx) {            // send END tag
     ctx->counter++;
     ctx->ciphrFn(MOLE_TAG_END);
@@ -118,20 +112,34 @@ static void SendEnd(port_ctx *ctx) {            // send END tag
 
 static void SendBoiler(port_ctx *ctx) {         // send boilerplate packet
     uint8_t len = ctx->boil[0];
-    SendHeader(ctx, MOLE_TAG_BOILERPLATE);
+    SendByte(ctx, MOLE_TAG_BOILERPLATE);
     for (int i = 0; i <= len; i++) SendByteU(ctx, ctx->boil[i]);
     SendByteU(ctx, 0);                          // zero-terminate to stringify
     SendEnd(ctx);
 }
+
+// Encryption
+
+static void SendTxBuf(port_ctx *ctx) {
+    ctx->cBlockFn((void *)&*ctx->tcCtx, ctx->txbuf, ctx->txbuf, 0);
+    Send16(ctx, ctx->txbuf);
+}
+
+static void SendHeader(port_ctx *ctx, int tag) {
+    ctx->hInitFn((void *)&*ctx->thCtx, ctx->hmackey, MOLE_HMAC_LENGTH, ctx->hctrTx);
+    SendByte(ctx, tag);                         // Header consists of a TAG byte,
+}
+
+#define ivADlength  2                           /* Associated data length */
 
 static void SendTxHash(port_ctx *ctx, int pad){ // finish authenticated packet
     DUMP((uint8_t*)&ctx->hctrTx, 8); PRINTF("%s is sending HMAC with hctrTx, ", ctx->name);
     uint8_t hash[MOLE_HMAC_LENGTH];
     ctx->hFinalFn((void *)&*ctx->thCtx, hash);
     ctx->hctrTx++;
-    ctx->ciphrFn(MOLE_ESCAPE);                   // HMAC marker
+    ctx->ciphrFn(MOLE_ESCAPE);                  // HMAC marker (in plaintext)
     ctx->ciphrFn(MOLE_HMAC_TRIGGER);
-    ctx->counter += 2;
+    ctx->counter += ivADlength;
     for (int i = 0; i < MOLE_HMAC_LENGTH; i++) SendByteU(ctx, hash[i]);
     SendEnd(ctx);
     while (pad && (ctx->counter & 0x1F)) {      // pad until next 32-byte boundary
@@ -225,34 +233,32 @@ static void moleSendMsg(port_ctx *ctx, const uint8_t *src, int len, int type) {
 }
 
 
-// Encrypt and send a key set
+// Encrypt and send a passcode
 static int moleReKeyRequest(port_ctx *ctx, const uint8_t *key, int tag){
-    if (moleAvail(ctx) < MOLE_KEYSET_LENGTH) return MOLE_ERROR_MSG_NOT_SENT;
-    moleSendMsg(ctx, key, MOLE_KEYSET_LENGTH, tag);
+    if (moleAvail(ctx) < MOLE_PASSCODE_LENGTH) return MOLE_ERROR_MSG_NOT_SENT;
+    moleSendMsg(ctx, key, MOLE_PASSCODE_LENGTH, tag);
     return 0;
 }
 
 // Derive various keys from the system passcode
-// If KEY_HASH_KEY is not really secret, an attecker can get the keys from the passcode.
-// However, the system passcode cannot be obtained from the keys.
+// If KDFhashKey is not really secret, an attecker can get the keys from the passcode.
+// However, the system passcode cannot be obtained from the keys. Hash is one-way.
 
-#define MaxKDFhashSize 32
-static uint8_t KDFbuffer[MaxKDFhashSize];
-static int KDFiterations;
-
-static int KDF (port_ctx *ctx, uint8_t *dest, const uint8_t *key, int length, int iterations) {
-    if (length > MaxKDFhashSize) return MOLE_ERROR_KDFBUF_TOO_SMALL;
-    if (KDFiterations > iterations) KDFiterations = 0;
-    if (KDFiterations == 0) memcpy(KDFbuffer, key, length);
-    int n = iterations - KDFiterations;
-    while (n--) {
-        ctx->hInitFn((void *)&*ctx->rhCtx, KHK, length, 0);
+static int KDF (port_ctx *ctx, uint8_t *dest, const uint8_t *src, int length,
+                int iterations, int reverse) {
+    uint8_t KDFbuffer[MOLE_ENCR_KEY_LENGTH];
+    if (length > MOLE_ENCR_KEY_LENGTH) return MOLE_ERROR_KDFBUF_TOO_SMALL;
+    for (int i = 0; i < length; i++) {
+        if (reverse) KDFbuffer[i] = src[length + (~i)];
+        else         KDFbuffer[i] = src[i];
+    }
+    while (iterations--) {
+        ctx->hInitFn((void *)&*ctx->rhCtx, KDFhashKey, length, 0);
         for (int i = 0; i < length; i++) {
             ctx->hputcFn((void *)&*ctx->rhCtx, KDFbuffer[i]);
         }
         ctx->hFinalFn((void *)&*ctx->rhCtx, KDFbuffer);
     }
-    KDFiterations = iterations;
     memcpy(dest, KDFbuffer, length);
     DUMP(KDFbuffer, length); PRINTF("KDF output ");
     return 0;
@@ -261,11 +267,9 @@ static int KDF (port_ctx *ctx, uint8_t *dest, const uint8_t *key, int length, in
 static int moleNewKeys(port_ctx *ctx, const uint8_t *key) {
     int r = testKey(ctx, key);
     if (r) return r;
-    KDFiterations = 0;
-    r |= KDF(ctx, ctx->adminpasscode, &key[32], MOLE_ADMINPASS_LENGTH, 55);
-    KDFiterations = 0;
-    r |= KDF(ctx, ctx->hmackey,       key, MOLE_HMAC_KEY_LENGTH, 50);
-    r |= KDF(ctx, ctx->cryptokey,     key, MOLE_ENCR_KEY_LENGTH, 60);
+    r |= KDF(ctx, ctx->hmackey,       key, MOLE_HMAC_KEY_LENGTH, 55, 0);
+    r |= KDF(ctx, ctx->cryptokey,     key, MOLE_ENCR_KEY_LENGTH, 55, 1);
+    r |= KDF(ctx, ctx->adminpasscode, &key[32], MOLE_ADMINPASS_LENGTH, 34, 0);
     return r;
 }
 
