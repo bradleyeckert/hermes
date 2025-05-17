@@ -31,15 +31,16 @@
 #define MOLE_TAG_IV_A               0x18 /* signal a 2-way IV init */
 #define MOLE_TAG_IV_B               0x19 /* signal a 1-way IV init */
 #define MOLE_TAG_ADMIN              0x1A /* adminOK password (random 128-bit number) */
+#define MOLE_TAG_EOF                0x1E /* End-of-file */
 #define MOLE_TAG_RAWTX              0x1F /* Raw non-repeatable AEAD message */
 
-#define MOLE_MSG_MESSAGE            1
-#define MOLE_MSG_NEW_KEY            2
-#define MOLE_MSG_REKEYED            3
+#define MOLE_MSG_MESSAGE               1
+#define MOLE_MSG_NEW_KEY               2
+#define MOLE_MSG_REKEYED               3
 
-#define MOLE_LENGTH_UNKNOWN         0x01
+#define MOLE_ANYLENGTH              0x01
 #define MOLE_END_UNPADDED              0
-#define MOLE_END_PADDED                1
+#define MOLE_END_PADDED               32
 
 // Error tags
 #define MOLE_ERROR_INVALID_STATE       1 /* FSM reached an invalid state */
@@ -57,6 +58,9 @@
 #define MOLE_ERROR_KDFBUF_TOO_SMALL   13
 #define MOLE_ERROR_MISSING_HMAC       14
 #define MOLE_ERROR_MISSING_IV         15
+#define MOLE_ERROR_STREAM_ENDED       16
+#define MOLE_ERROR_NO_RAWPACKET       17
+#define MOLE_ERROR_NO_ANYLENGTH       18
 
 enum States {
   IDLE = 0,
@@ -120,6 +124,7 @@ typedef struct
     enum States state;      // of the FSM
     uint8_t hmac[MOLE_HMAC_LENGTH];
     uint32_t counter;       // TX counter
+    uint32_t chunks;        // for stream decryption
     uint16_t rBlocks;       // size of rxbuf in blocks
     uint16_t avail;         // max size of message you can send = avail*64 bytes
     uint16_t ridx;          // rxbuf index
@@ -228,16 +233,16 @@ void moleAdmin(port_ctx *ctx);
 int moleFileIn (port_ctx *ctx, mole_inFn cFn, mole_outFn mFn);
 
 
-int  moleFileNew (port_ctx *ctx, int pad); // boilerplate and IV preamble
+int  moleFileNew (port_ctx *ctx);       // boilerplate and IV preamble
 void moleFileOut (port_ctx *ctx, const uint8_t *src, int len);
-void moleFileFinal (port_ctx *ctx, int pad); // finish
+void moleFileFinal (port_ctx *ctx);     // finish
 
 /* Typical usage: Redirect ciphrFn to a file output, then:
-    moleFileNew(ctx, 0);
+    moleFileNew(ctx);
     moleFileOut(ctx, messageA, sizeof(messageA));
     moleFileOut(ctx, messageB, sizeof(messageB));
     ...
-    moleFileFinal(ctx, 0);
+    moleFileFinal(ctx);
 */
 
 #endif /* __MOLE_H__ */

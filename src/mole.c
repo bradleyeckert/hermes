@@ -67,14 +67,17 @@ static int testHMAC(port_ctx *ctx, const uint8_t *buf) {
 }
 
 static int testKey(port_ctx *ctx, const uint8_t *key) {
-   DUMP(&key[0], MOLE_PASSCODE_HMAC); PRINTF("keyset data\n");
     BEGIN_HASH(CTX->rhCtx, KDFhashKey, MOLE_HMAC_LENGTH, 0);
+        DUMP(&key[0], MOLE_PASSCODE_HMAC);
+        PRINTF("keyset data\n");
     for (int i=0; i < MOLE_PASSCODE_HMAC; i++) {
         HASH(CTX->rhCtx, key[i]);
     }
     END_HASH(CTX->rhCtx, ctx->hmac);
-   DUMP(ctx->hmac, MOLE_HMAC_LENGTH); PRINTF("expected key hmac");
-   DUMP(&key[MOLE_PASSCODE_HMAC], MOLE_HMAC_LENGTH); PRINTF("actual key hmac\n");
+        DUMP(ctx->hmac, MOLE_HMAC_LENGTH);
+        PRINTF("expected key hmac");
+        DUMP(&key[MOLE_PASSCODE_HMAC], MOLE_HMAC_LENGTH);
+        PRINTF("actual key hmac\n");
     return testHMAC(ctx, &key[MOLE_PASSCODE_HMAC]);
 }
 
@@ -139,20 +142,26 @@ static void SendHeader(port_ctx *ctx, int tag) {
 
 #define ivADlength  2                           /* Associated data length */
 
+static void SendAsHash(port_ctx *ctx, uint8_t *src) {
+    for (int i = 0; i < MOLE_HMAC_LENGTH; i++) SendByteU(ctx, *src++);
+    SendEnd(ctx);
+}
+
 static void SendTxHash(port_ctx *ctx, int pad){ // finish authenticated packet
+    uint8_t hash[MOLE_HMAC_LENGTH];
         DUMP((uint8_t*)&ctx->hashCounterTX, 8);
         PRINTF("%s is sending HMAC with hashCounterTX, ", ctx->name);
-    uint8_t hash[MOLE_HMAC_LENGTH];
     END_HASH(CTX->thCtx, hash);
     ctx->hashCounterTX++;
-    TX(MOLE_ESCAPE);                  // HMAC marker (in plaintext)
+    TX(MOLE_ESCAPE);                            // HMAC marker (in plaintext)
     TX(MOLE_HMAC_TRIGGER);
     ctx->counter += ivADlength;
-    for (int i = 0; i < MOLE_HMAC_LENGTH; i++) SendByteU(ctx, hash[i]);
-    SendEnd(ctx);
-    while (pad && (ctx->counter & 0x1F)) {      // pad until next 32-byte boundary
-        ctx->counter++;
-        TX(0);
+    SendAsHash(ctx, hash);
+    if (pad) {
+        while (ctx->counter & (pad - 1)) {      // pad until next pad-byte boundary
+            ctx->counter++;
+            TX(0);
+        }
     }
     SendEnd(ctx);
 }
@@ -181,10 +190,10 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
         DUMP((uint8_t*)&ctx->hashCounterRX, 8); PRINTF("New %s.hashCounterRX",ctx->name);
         DUMP((uint8_t*)&ctx->hashCounterTX, 8); PRINTF("Current %s.hashCounterTX",ctx->name);
         DUMP((uint8_t*)mIV, MOLE_IV_LENGTH);    PRINTF("mIV used by %s to encrypt cIV",ctx->name);
+        DUMP((uint8_t*)cIV, MOLE_IV_LENGTH);    PRINTF("IV (not output)");
     BEGIN_TX (CTX->tcCtx, ctx->cryptokey, mIV); // begin encryption with plaintext IV
     BLOCK_CIPHER(CTX->tcCtx, cIV, mIV, 0);      // replace mIV with encrypted cIV
-        DUMP((uint8_t*)mIV, MOLE_IV_LENGTH);    PRINTF("mcIV");
-        DUMP((uint8_t*)cIV, MOLE_IV_LENGTH);    PRINTF("cIV\n");
+        DUMP((uint8_t*)mIV, MOLE_IV_LENGTH);    PRINTF("cIV output as encrypted IV\n");
 #if (MOLE_IV_LENGTH == MOLE_BLOCKSIZE)
     SendBlock(ctx, mIV);
 #else
@@ -273,7 +282,7 @@ static int KDF (port_ctx *ctx, uint8_t *dest, const uint8_t *src, int length,
         END_HASH(CTX->rhCtx, KDFbuffer);
     }
     memcpy(dest, KDFbuffer, length);
-   DUMP(KDFbuffer, length); PRINTF("KDF output ");
+        DUMP(KDFbuffer, length); PRINTF("KDF output ");
     return 0;
 }
 
@@ -305,11 +314,11 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
                    const uint8_t *key, mole_WrKeyFn WrKeyFn) {
     memset(ctx, 0, sizeof(port_ctx));
     ctx->plainFn = plain;                       // plaintext output handler
-    TX = ciphr;                       // ciphertext output handler
+    TX = ciphr;                                 // ciphertext output handler
     ctx->boilrFn = boiler;                      // boilerplate output handler
     ctx->rxbuf = Allocate(rxBlocks << BLOCK_SHIFT);
     ctx->rBlocks = rxBlocks;                    // block size (1<<BLOCK_SHIFT) bytes
-    if (rxBlocks < 2) return MOLE_ERROR_BUF_TOO_SMALL;
+    if (rxBlocks < 1) return MOLE_ERROR_BUF_TOO_SMALL;
     switch (protocol) {
     default: // 0
         ctx->rcCtx = Allocate(sizeof(xChaCha_ctx));
@@ -325,7 +334,7 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
     if (ALLOC_HEADROOM < 0) return MOLE_ERROR_OUT_OF_MEMORY;
     ctx->WrKeyFn = WrKeyFn;
     ctx->rngFn = rngFn;
-    ctx->boilerplate = boilerplate;                    // counted string
+    ctx->boilerplate = boilerplate;             // counted string
     ctx->name = name;                           // Zstring name for debugging
     return moleNewKeys(ctx, key);
 }
@@ -386,9 +395,9 @@ int molePutc(port_ctx *ctx, uint8_t c){
         ctx->escaped = 0;
         if (c > 1) switch(c) {
             case MOLE_HMAC_TRIGGER:
-                DUMP((uint8_t*)&ctx->hashCounterRX, 8);
-               PRINTF("%s receiving HMAC with hashCounterRX, ", ctx->name);
                 END_HASH(CTX->rhCtx, ctx->hmac);
+                    DUMP((uint8_t*)&ctx->hashCounterRX, 8);
+                    PRINTF("%s receiving HMAC with hashCounterRX, ", ctx->name);
                 ctx->hashCounterRX++;
                 ctx->MACed = 1;
                 return 0;
@@ -409,10 +418,10 @@ int molePutc(port_ctx *ctx, uint8_t c){
     int i = ctx->ridx;
     switch (ctx->state) {
     case IDLE:
-        if (c < MOLE_TAG_GET_BOILER) break;   // limit range of valid tags
+        if (c < MOLE_TAG_GET_BOILER) break;     // limit range of valid tags
         if (c > MOLE_TAG_ADMIN)      break;
         if (c == MOLE_TAG_IV_A) {
-            ctx->hashCounterRX = 0;                    // before initializing the hash
+            ctx->hashCounterRX = 0;             // before initializing the hash
             ctx->rReady = 0;
             ctx->tReady = 0;
         }
@@ -508,9 +517,11 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
             memcpy(&ctx->hashCounterTX, &ctx->rxbuf[MOLE_IV_LENGTH], 8);
             memcpy(&ctx->avail, &ctx->rxbuf[2*MOLE_IV_LENGTH], 2);
             ctx->rReady = 1;
-           PRINTf("\nReceived IV, tag=%d; ", ctx->tag);
-           DUMP((uint8_t*)&ctx->hashCounterRX, 8); PRINTF("Received HMAC hashCounterRX, ");
-           DUMP((uint8_t*)&ctx->rxbuf[MOLE_IV_LENGTH], MOLE_IV_LENGTH); PRINTF("Private cIV, ");
+                PRINTf("\nReceived IV, tag=%d; ", ctx->tag);
+                DUMP((uint8_t*)&ctx->hashCounterRX, 8);
+                PRINTF("Received HMAC hashCounterRX, ");
+                DUMP((uint8_t*)&ctx->rxbuf[MOLE_IV_LENGTH], MOLE_IV_LENGTH);
+                PRINTF("Private cIV, ");
             if (ctx->tag == MOLE_TAG_IV_A) {
                 r = SendIV(ctx, MOLE_TAG_IV_B);
             }
@@ -518,9 +529,12 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
         case MOLE_TAG_ADMIN:
             ctx->adminOK = 0;
             if (r) break;
-           DUMP(ctx->adminpasscode, MOLE_ADMINPASS_LENGTH); PRINTF("Expected Passcode");
-           DUMP(ctx->rxbuf, MOLE_ADMINPASS_LENGTH);         PRINTF("Actual Passcode");
-            if (memcmp(ctx->rxbuf, ctx->adminpasscode, MOLE_ADMINPASS_LENGTH) == 0) ctx->adminOK = 0x55;
+                DUMP(ctx->adminpasscode, MOLE_ADMINPASS_LENGTH);
+                PRINTF("Expected Passcode");
+                DUMP(ctx->rxbuf, MOLE_ADMINPASS_LENGTH);
+                PRINTF("Actual Passcode");
+            if (memcmp(ctx->rxbuf, ctx->adminpasscode, MOLE_ADMINPASS_LENGTH) == 0)
+                ctx->adminOK = 0x55;
             break;
         case MOLE_TAG_MESSAGE:
             if (r) {
@@ -567,23 +581,32 @@ noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
 
 static void moleFileInit (port_ctx *ctx) {
     SendHeader(ctx, MOLE_TAG_RAWTX);
-    SendByte(ctx, MOLE_LENGTH_UNKNOWN);
+    SendByte(ctx, MOLE_ANYLENGTH);
 }
 
-int moleFileNew(port_ctx *ctx, int pad) {       // start a new one-way message
-    int r = NewStream(ctx, pad);
+int moleFileNew(port_ctx *ctx) {                // start a new one-way message
+    int r = NewStream(ctx, 0);
+    BEGIN_HASH(CTX->rhCtx, ctx->hmackey, MOLE_HMAC_LENGTH, ctx->hashCounterRX);
+        DUMP((uint8_t*)&ctx->hashCounterRX, 8);  PRINTF("Overall hash ctr");
     ctx->hashCounterTX = ctx->hashCounterRX + 1;
     moleFileInit(ctx);                          // get ready to write blocks
     return r;
 }
 
-void moleFileFinal (port_ctx *ctx, int pad) {   // end the one-way message
-    SendTxHash(ctx, pad);
+void moleFileFinal (port_ctx *ctx) {            // end the one-way message
+    SendTxHash(ctx, 0);                         // finish last chunk
+    SendByteU(ctx, MOLE_TAG_EOF);
+    END_HASH(CTX->rhCtx, ctx->hmac);
+    SendAsHash(ctx, ctx->hmac);                 // send overall hash
 }
 
+// Note: len must be a multiple of 16.
 void moleFileOut (port_ctx *ctx, const uint8_t *src, int len) {
     while (len > 0) {
         memcpy(ctx->txbuf, src, MOLE_BLOCKSIZE);
+        for (int i = 0; i < MOLE_BLOCKSIZE; i++) {
+            HASH(CTX->rhCtx, src[i]);           // overall hash uses rx chan
+        }
         SendTxBuf(ctx);
         src += MOLE_BLOCKSIZE;
         len -= MOLE_BLOCKSIZE;
@@ -591,8 +614,8 @@ void moleFileOut (port_ctx *ctx, const uint8_t *src, int len) {
         uint8_t block = (uint8_t)(p >> MOLE_FILE_MESSAGE_SIZE);
         if (ctx->prevblock != block) {
             ctx->prevblock = block;
-            moleFileFinal(ctx, MOLE_END_PADDED);
-            moleFileInit(ctx);
+            SendTxHash(ctx, MOLE_END_PADDED);
+            moleFileInit(ctx);                  // restart block if too long
         }
     }
 }
@@ -608,7 +631,6 @@ int moleSend(port_ctx *ctx, const uint8_t *src, int len) {
 // The second pass decrypts and authenticates.
 
 static mole_inFn  inFn;
-static mole_outFn outFn;
 static int done;
 static int position;
 
@@ -630,6 +652,9 @@ static void SkipEndTag(void) {
     } while (c != MOLE_TAG_END);
 }
 
+#define HMAC_TAG 0x100
+#define DONE_TAG 0x400
+
 static int NextChar(port_ctx *ctx) {
     uint8_t c = NextByte();
     if (c == MOLE_ESCAPE) {
@@ -641,11 +666,12 @@ static int NextChar(port_ctx *ctx) {
         case MOLE_HMAC_TRIGGER:
             END_HASH(CTX->rhCtx, ctx->hmac);
             ctx->hashCounterRX++;
-            return 0x100;
+            return HMAC_TAG;
         default:
-            return 0x400;
+            done = 1;
         }
     }
+    if (done) return DONE_TAG;
     HASH(CTX->rhCtx, c);
     return c;
 }
@@ -655,9 +681,9 @@ static int NextChar(port_ctx *ctx) {
 #define cIV &ctx->rxbuf[MOLE_IV_LENGTH]
 
 static int NextBlock(port_ctx *ctx, uint8_t *dest) {
-    for (int i = 0; i < MOLE_BLOCKSIZE; i++) {  // return bytes read before HMAC
+    for (int i = 0; i < MOLE_BLOCKSIZE; i++) {
         int c = RX;
-        if (c & 0x100) return i;                // HMAC tag
+        if (c & HMAC_TAG) return i;             // return bytes read before HMAC
         *dest++ = c;
     }
     return MOLE_BLOCKSIZE;
@@ -666,36 +692,69 @@ static int NextBlock(port_ctx *ctx, uint8_t *dest) {
 int moleFileIn (port_ctx *ctx, mole_inFn cFn, mole_outFn mFn) {
     done = 0;  position = 0;
     inFn = cFn;
-    outFn = mFn;
-        PRINTf("\nDecrypting input stream c, producing output stream m");
-    if (outFn == NULL) PRINTf("\nAuthenticate Only");
+        PRINTf("\n%s decrypting input stream c, producing output stream m", ctx->name);
+    if (mFn == NULL) PRINTf("\nAuthenticate Only");
     SkipEndTag();                               // skip boilerplate
     int c = 0xFF;
     while ((c == 0xFF) && (!done)) {            // skip blanks
         c = NextByte();
     }
     if (c != MOLE_TAG_IV_A) return MOLE_ERROR_MISSING_IV;
-        PRINTf("\nIV tag found at position 0x%x ", position - 1);
+        PRINTf("\nIV tag is at position 0x%x ", position - 1);
     ctx->hashCounterRX = 0;
     BEGIN_HASH(CTX->rhCtx, ctx->hmackey, MOLE_HMAC_LENGTH, 0);
+    HASH(CTX->rhCtx, c);
     NextBlock (ctx, mIV);
-        DUMP(mIV, MOLE_HMAC_LENGTH); PRINTF("mIV");
+        DUMP(mIV, MOLE_HMAC_LENGTH); PRINTF("mIV read");
     BEGIN_TX  (CTX->rcCtx, ctx->cryptokey, mIV);
     NextBlock (ctx, mIV);
-        DUMP(mIV, MOLE_HMAC_LENGTH); PRINTF("mcIV");
-    RX;                                         // skip avail field
-    RX;
-    BLOCK_CIPHER(CTX->tcCtx, mIV, cIV, 0);
+        DUMP(mIV, MOLE_HMAC_LENGTH); PRINTF("cIV read");
+    RX; RX;                                      // skip avail field
+    BLOCK_CIPHER(CTX->rcCtx, mIV, cIV, 0);
     memcpy(&ctx->hashCounterRX, cIV, 8);
-        DUMP(cIV, MOLE_HMAC_LENGTH); PRINTF("cIV\n");
+        DUMP(cIV, MOLE_HMAC_LENGTH); PRINTF("IV calculated\n");
         DUMP((uint8_t*)&ctx->hashCounterRX, 8); PRINTF("hashCounterRX ");
+    BEGIN_HASH(CTX->thCtx, ctx->hmackey, MOLE_HMAC_LENGTH, ctx->hashCounterRX);
     BEGIN_TX  (CTX->rcCtx, ctx->cryptokey, cIV);
     if (NextBlock(ctx, mIV)) return MOLE_ERROR_MISSING_HMAC;
-        PRINTf("\nHMAC found at position 0x%x ", position);
-        DUMP(ctx->hmac, MOLE_HMAC_LENGTH); PRINTF("expected key hmac ");
-        DUMP(mIV, MOLE_HMAC_LENGTH); PRINTF("actual key hmac\n");
-    if (testHMAC (ctx, mIV)) return MOLE_ERROR_BAD_HMAC;
+        PRINTf("\nIV HMAC is at position 0x%x ", position);
     NextBlock(ctx, mIV);
+    if (testHMAC(ctx, mIV)) {
+badmac: DUMP(ctx->hmac, MOLE_HMAC_LENGTH); PRINTF("expected key hmac ");
+        DUMP(mIV, MOLE_HMAC_LENGTH); PRINTF("actual key hmac\n");
+        return MOLE_ERROR_BAD_HMAC;
+    }
+    SkipEndTag();
+    SkipEndTag();
+        PRINTf("\nRandom IV (nonce) has been set up and authenticated");
+        PRINTf("\nDecrypting the stream at position 0x%x\n", position);
+    ctx->chunks = 0;
+    while(1) {
+        BEGIN_HASH(CTX->rhCtx, ctx->hmackey, MOLE_HMAC_LENGTH, ctx->hashCounterRX);
+        int n = RX;
+        if (n == MOLE_TAG_EOF)    break;
+        if (n != MOLE_TAG_RAWTX)  return MOLE_ERROR_NO_RAWPACKET;
+        if (RX != MOLE_ANYLENGTH) return MOLE_ERROR_NO_ANYLENGTH;
+        while (1) {
+            n = NextBlock(ctx, mIV);
+            if (done)             return MOLE_ERROR_STREAM_ENDED;
+            if (n < 16) break;                  // HMAC was captured
+            BLOCK_CIPHER(CTX->rcCtx, mIV, mIV, 0);
+            for (int i=0; i<16; i++) {
+                uint8_t c = mIV[i];
+                HASH(CTX->thCtx, c);            // add plaintext to overall hash
+                if (mFn != NULL) mFn(c);
+            }
+        }
+        NextBlock(ctx, mIV);                    // get expected HMAC
+        if (testHMAC(ctx, mIV)) goto badmac;
+        SkipEndTag();
+        SkipEndTag();
+        ctx->chunks++;
+    }   PRINTf("\nEOF found at position 0x%x, %d chunks\n", position, ctx->chunks);
+    END_HASH(CTX->thCtx, ctx->hmac);
+    NextBlock(ctx, mIV);
+    if (testHMAC(ctx, mIV)) goto badmac;
     return 0;
 }
 

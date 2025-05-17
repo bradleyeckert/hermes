@@ -195,7 +195,7 @@ int getc_RNG(void) {
 }                           // Use a TRNG instead
 
 int main() {
-    int tests = 0x1FF;      // enable these tests...
+    int tests = 0x3FF;      // enable these tests...
 //    tests = 0x307;
 //    snoopy = 1;             // display the wire traffic
     moleNoPorts();
@@ -220,7 +220,7 @@ int main() {
     if (tests & 0x04) if (0 == PairAlice()) return 0x1004;
     int i, j;
     if (tests & 0x08) {
-        printf("\n\nAlice =================================");
+        printf("\n\nAlice ===================================");
         moleSend(&Alice, (uint8_t*)"*", 1);
         moleSend(&Alice, (uint8_t*)"*", 0);
     }
@@ -229,7 +229,7 @@ int main() {
         do {j = SendAlice(i++);} while (i != j);
     }
     if (tests & 0x20) {
-        printf("\n\nBob ===================================");
+        printf("\n\nBob =====================================");
         i = 0;
         do {j = SendBob(i++);} while (i != j);
     }
@@ -257,25 +257,26 @@ int main() {
             return 1;
         }
         tally = 0;
-        moleFileNew(&Alice, 256);
+        moleFileNew(&Alice);
         for (int i = 0; i < 100; i++) {
             moleFileOut(&Alice, (uint8_t*)"ABCDEFGHIJKLMNOP", 16);
         }
-        moleFileFinal(&Alice, 0);
+        moleFileFinal(&Alice);
         fclose(file);
         printf("%d bytes written\n", tally);
     }
     if (tests & 0x200) {
-        printf("\n\nTest read from demofile.bin, ");
+        printf("\n\nTest read from demofile.bin: ");
         file = fopen("demofile.bin", "rb");
         if (file == NULL) {
             printf("\nError opening file!");
             return 2;
         }
         tally = 0;
-        int ior = moleFileIn(&Alice, CharFromFile, CharEmit);
+        int ior = moleFileIn(&Bob, CharFromFile, CharEmit);
         fclose(file);      // ^-- change to Bob
-        printf("%d bytes read, ior=%d\n", tally, ior);
+        printf("\n%d bytes read, ior=%d\n", tally, ior);
+        if (ior) return 0x1200;
     }
     return 0;
 }
