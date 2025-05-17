@@ -7,6 +7,7 @@
 
 #ifndef MOLE_ALLOC_MEM_UINT32S
 #define MOLE_ALLOC_MEM_UINT32S      4096 /* longs for context memory */
+#warning "MOLE_ALLOC_MEM_UINT32S is not defined, using a generous value that eats RAM"
 #endif
 #define MOLE_FILE_MESSAGE_SIZE         9 /* Log2 of file message block */
 
@@ -17,6 +18,7 @@
 #define MOLE_ADMINPASS_LENGTH         16 /* administrator password length in bytes */
 #define MOLE_PASSCODE_LENGTH          64 /* userpass[32], adminpass[16], hmac[16] */
 #define MOLE_PASSCODE_HMAC  (MOLE_PASSCODE_LENGTH - MOLE_HMAC_LENGTH)
+#define MOLE_BLOCKSIZE                16 /* Bytes per encryption block */
 
 // Message tags
 #define MOLE_TAG_END                0x0A /* signal end of message (don't change) */
@@ -28,7 +30,7 @@
 #define MOLE_TAG_MESSAGE            0x17 /* signal an encrypted message */
 #define MOLE_TAG_IV_A               0x18 /* signal a 2-way IV init */
 #define MOLE_TAG_IV_B               0x19 /* signal a 1-way IV init */
-#define MOLE_TAG_ADMIN              0x1A /* admin password (random 128-bit number) */
+#define MOLE_TAG_ADMIN              0x1A /* adminOK password (random 128-bit number) */
 #define MOLE_TAG_RAWTX              0x1F /* Raw non-repeatable AEAD message */
 
 #define MOLE_MSG_MESSAGE            1
@@ -53,6 +55,8 @@
 #define MOLE_ERROR_MSG_NOT_SENT       11
 #define MOLE_ERROR_BUF_TOO_SMALL      12
 #define MOLE_ERROR_KDFBUF_TOO_SMALL   13
+#define MOLE_ERROR_MISSING_HMAC       14
+#define MOLE_ERROR_MISSING_IV         15
 
 enum States {
   IDLE = 0,
@@ -78,7 +82,7 @@ The FSM is not full-duplex. If the FSM has wait for the UART transmitter
 
 typedef void (*mole_ciphrFn)(uint8_t c);    // output raw ciphertext byte
 typedef void (*mole_plainFn)(const uint8_t *src, int length);
-typedef void (*mole_boilrFn) (const uint8_t *src);
+typedef void (*mole_boilrFn)(const uint8_t *src);
 typedef int  (*mole_rngFn)  (void);
 typedef uint8_t* (*mole_WrKeyFn)(uint8_t* keyset);
 
@@ -105,12 +109,12 @@ typedef struct
     hmac_finalFn hFinalFn;  // HMAC finalization function
     crypt_initFn cInitFn;   // Encryption initialization function
     crypt_blockFn cBlockFn; // Encryption block function
-    uint64_t hctrRx;        // HMAC counters
-    uint64_t hctrTx;
+    uint64_t hashCounterRX; // HMAC counters
+    uint64_t hashCounterTX;
     uint8_t cryptokey[MOLE_ENCR_KEY_LENGTH];
     uint8_t hmackey[MOLE_HMAC_KEY_LENGTH];
     uint8_t adminpasscode[MOLE_ADMINPASS_LENGTH];
-    const uint8_t *boil;    // boilerplate
+    const uint8_t *boilerplate;
     uint8_t *rxbuf;
     uint8_t txbuf[16];
     enum States state;      // of the FSM
@@ -127,9 +131,12 @@ typedef struct
     // Things the app needs to know...
     uint8_t rReady;         // receiver is initialized
     uint8_t tReady;         // transmitter is initialized
-    uint8_t admin;          // admin password was received
+    uint8_t adminOK;        // adminOK password was received
 } port_ctx;
 
+// Streaming I/O function types
+typedef int (*mole_inFn)(void);
+typedef void (*mole_outFn)(uint8_t c);
 
 /** Clear the port list. Call before moleAddPort.
  *  May be used to wipe contexts before exiting an app so sensitive data
@@ -157,6 +164,8 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
                    mole_boilrFn boiler, mole_plainFn plain, mole_ciphrFn ciphr,
                    const uint8_t *key, mole_WrKeyFn WrKeyFn);
 
+int moleRAMused (int ports);
+int moleRAMunused (void);
 
 /** Input raw ciphertext (or command), such as received from a UART
  * @param ctx Port identifier
@@ -210,12 +219,25 @@ void moleBoilerReq(port_ctx *ctx);
 void moleAdmin(port_ctx *ctx);
 
 
-int moleRAMused (int ports);
-int moleRAMunused (void);
+/** Decrypt a file stream
+ * @param ctx   Port identifier
+ * @param cFn   Input function
+ * @param mFn   Output function, NULL if none
+ * @return      0 if ok, else error
+ */
+int moleFileIn (port_ctx *ctx, mole_inFn cFn, mole_outFn mFn);
 
-int  moleFileNew (port_ctx *ctx);
-void moleFileInit (port_ctx *ctx);
-void moleFileFinal (port_ctx *ctx, int pad);
+
+int  moleFileNew (port_ctx *ctx, int pad); // boilerplate and IV preamble
 void moleFileOut (port_ctx *ctx, const uint8_t *src, int len);
+void moleFileFinal (port_ctx *ctx, int pad); // finish
+
+/* Typical usage: Redirect ciphrFn to a file output, then:
+    moleFileNew(ctx, 0);
+    moleFileOut(ctx, messageA, sizeof(messageA));
+    moleFileOut(ctx, messageB, sizeof(messageB));
+    ...
+    moleFileFinal(ctx, 0);
+*/
 
 #endif /* __MOLE_H__ */

@@ -58,7 +58,7 @@ int NextChar(void) {
             hctr++;
             return 0x100;
         default:
-            printf("\nUnknown 10 ??");
+            printf("\nUnknown 0B ??");
         } else c += 0x0A;
     }
     b2s_hmac_putc(&hCtx, c);
@@ -113,10 +113,15 @@ int main(int argc, char *argv[]) {
     moleNewKeys(keyset);
     SkipEndTag();                               // skip boilerplate
 //    SkipEndTag();
-    printf("\nBegin CHALLENGE message at 0x%X ", (unsigned int)ftell(file));
+    printf("\nSkipping blanks at 0x%X ", (unsigned int)ftell(file));
+    int c = 0xFF;
+    while (c == 0xFF) {                         // skip blanks
+        c = NextChar();
+    }
     hctr = 0;
-    b2s_hmac_init(&hCtx, hmackey, 16, hctr);
-    if (NextChar() != 0x18) {
+    b2s_hmac_init(&hCtx, hmackey, 32, hctr);
+    printf("\nBegin CHALLENGE message at 0x%X ", (unsigned int)ftell(file)-1);
+    if (c != 0x18) {
         printf("\nError: Couldn't find challenge tag");
         goto end;
     }
@@ -132,7 +137,7 @@ int main(int argc, char *argv[]) {
     dump(IV, 16); printf("cIV (private)");
     dump((uint8_t*)&hctr, 8); printf("Initial 64-bit HMAC counter");
     if (NextBlock(IV)) {
-        printf("\nError: Expected 10 04 HMAC trigger");
+        printf("\nError: Expected 0B 02 HMAC trigger");
         goto end;
     }
     NextBlock(IV);                              // expected HMAC
@@ -150,7 +155,7 @@ int main(int argc, char *argv[]) {
     printf("\nDecryption stream has been initialized, fp=0x%X ", (unsigned int)ftell(file));
 // Begin RAW PACKET messages
     while(1) {
-        b2s_hmac_init(&hCtx, hmackey, 16, hctr);
+        b2s_hmac_init(&hCtx, hmackey, 32, hctr);
         int c = NextChar();
         if (c < 0) {
             printf("\nFINISHED!");

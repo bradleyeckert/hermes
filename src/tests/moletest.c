@@ -145,14 +145,15 @@ int SendBob(int msgID) {
     return elements;
 }
 
-void PairAlice(void) {
+int PairAlice(void) {
     printf("\nAlice is pairing with key ");
     for (int i=0; i<32; i++) printf("%02x", Alice.cryptokey[i]);
     molePair(&Alice);
-    if (Alice.hctrTx != Bob.hctrRx) printf("\nERROR: Alice cannot send to Bob");
-    if (Bob.hctrTx != Alice.hctrRx) printf("\nERROR: Bob cannot send to Alice");
+    if (Alice.hashCounterTX != Bob.hashCounterRX) printf("\nERROR: Alice cannot send to Bob");
+    if (Bob.hashCounterTX != Alice.hashCounterRX) printf("\nERROR: Bob cannot send to Alice");
     printf("\nAvailability: Alice=%d, Bob=%d",
            moleAvail(&Alice), moleAvail(&Bob));
+    return (moleAvail(&Alice)) && (moleAvail(&Bob));
 }
 
 // File encryption
@@ -161,11 +162,21 @@ FILE *file;
 int tally;
 
 void CharToFile(uint8_t c) {
-    fputc(c, file);
     tally++;
+    fputc(c, file);
 }
 
-// 32-byte encryption key, 32-byte MAC key, 16-byte admin password, 32-byte spare keys, 16-byte hash
+int CharFromFile(void) {
+    tally++;
+    return fgetc(file);
+}
+
+void CharEmit(uint8_t c) {
+    fputc(c, stdout);
+}
+
+
+// 32-byte encryption key, 32-byte MAC key, 16-byte adminOK password, 32-byte spare keys, 16-byte hash
 uint8_t my_keys[] = TESTPASS_1;
 const uint8_t new_keys[] = TESTPASS_2;
 
@@ -185,6 +196,7 @@ int getc_RNG(void) {
 
 int main() {
     int tests = 0x1FF;      // enable these tests...
+//    tests = 0x307;
 //    snoopy = 1;             // display the wire traffic
     moleNoPorts();
     int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, getc_RNG,
@@ -197,15 +209,15 @@ int main() {
         return ior;
     }
     printf("Static context RAM usage: %d bytes per port\n", moleRAMused(2)/2);
-    printf("context_memory has %d unused bytes (%d unused longs)\n",
+    printf("context_memory has %d unused bytes (%d unused longs), see MOLE_ALLOC_MEM_UINT32S\n",
            moleRAMunused(), moleRAMunused()/4);
-    Alice.hctrTx = 0x3412; // ensure that re-pair resets these
-    Alice.hctrRx = 0x341200;
-    Bob.hctrTx = 0x785600;
-    Bob.hctrRx = 0x7856;
+    Alice.hashCounterTX = 0x3412; // ensure that re-pair resets these
+    Alice.hashCounterRX = 0x341200;
+    Bob.hashCounterTX = 0x785600;
+    Bob.hashCounterRX = 0x7856;
     if (tests & 0x01) moleBoilerReq(&Alice);
     if (tests & 0x02) moleBoilerReq(&Bob);
-    if (tests & 0x04) PairAlice();
+    if (tests & 0x04) if (0 == PairAlice()) return 0x1004;
     int i, j;
     if (tests & 0x08) {
         printf("\n\nAlice =================================");
@@ -223,33 +235,47 @@ int main() {
     }
     error_pacing = 1000000; // turn off error injection
     if (tests & 0x40) {
-        printf("\nEnable admin mode =======================");
-        printf("\nBefore = %x", Bob.admin);
+        printf("\nEnable adminOK mode =======================");
+        printf("\nBefore = %x", Bob.adminOK);
         moleAdmin(&Alice);
-        printf("\nAfter = 0x%x", Bob.admin);
+        printf("\nAfter = 0x%x", Bob.adminOK);
     }
     if (tests & 0x80) {
         printf("\n\nRe-keying ===============================");
         i = moleReKey(&Alice, new_keys);
         if (i) printf("\nError %d: %s, ", i, errorCode(i));
-        PairAlice();
+        if (0 == PairAlice()) return 0x1080;
     }
     printf("\nAlice sent %d bytes", Alice.counter);
     printf("\nBob sent %d bytes", Bob.counter);
     if (tests & 0x100) {
-        printf("\n\nTest write to demofile.bin ");
+        printf("\n\nTest write to demofile.bin, ");
         Alice.ciphrFn = CharToFile;
         file = fopen("demofile.bin", "wb");
         if (file == NULL) {
             printf("\nError creating file!");
             return 1;
         }
-        moleFileNew(&Alice);
+        tally = 0;
+        moleFileNew(&Alice, 256);
         for (int i = 0; i < 100; i++) {
             moleFileOut(&Alice, (uint8_t*)"ABCDEFGHIJKLMNOP", 16);
         }
         moleFileFinal(&Alice, 0);
         fclose(file);
+        printf("%d bytes written\n", tally);
+    }
+    if (tests & 0x200) {
+        printf("\n\nTest read from demofile.bin, ");
+        file = fopen("demofile.bin", "rb");
+        if (file == NULL) {
+            printf("\nError opening file!");
+            return 2;
+        }
+        tally = 0;
+        int ior = moleFileIn(&Alice, CharFromFile, CharEmit);
+        fclose(file);      // ^-- change to Bob
+        printf("%d bytes read, ior=%d\n", tally, ior);
     }
     return 0;
 }
