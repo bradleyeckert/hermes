@@ -210,7 +210,7 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
 // Do not guarantee delivery, just send and forget. This scheme assumes a host PC
 // with a large rxbuf, so it will get the data. Otherwise, the HMAC is dropped.
 
-static int NewStream(port_ctx *ctx, int headspace) {
+static int NewStream(port_ctx *ctx, uint32_t headspace) {
     ctx->counter = 0;
     ctx->prevblock = 0;
     ctx->rReady = 0;

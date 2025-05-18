@@ -9,9 +9,9 @@ extern "C" {
 #include "xchacha/src/xchacha.h"
 #include "blake2s/src/blake2s.h"
 
+// Define MOLE_ALLOC_MEM_UINT32S in the project to avoid escess RAM usage
 #ifndef MOLE_ALLOC_MEM_UINT32S
 #define MOLE_ALLOC_MEM_UINT32S      4096 /* longs for context memory */
-#warning "MOLE_ALLOC_MEM_UINT32S is not defined, using a generous value that eats RAM"
 #endif
 
 #define MOLE_FILE_CHUNK_SIZE_LOG2     10 /* Log2 of file chunk size */
