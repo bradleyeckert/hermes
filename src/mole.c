@@ -611,7 +611,7 @@ void moleFileOut (port_ctx *ctx, const uint8_t *src, int len) {
         src += MOLE_BLOCKSIZE;
         len -= MOLE_BLOCKSIZE;
         uint32_t p = ctx->counter + 2 * MOLE_HMAC_LENGTH + 3;
-        uint8_t block = (uint8_t)(p >> MOLE_FILE_MESSAGE_SIZE);
+        uint8_t block = (uint8_t)(p >> MOLE_FILE_CHUNK_SIZE_LOG2);
         if (ctx->prevblock != block) {
             ctx->prevblock = block;
             SendTxHash(ctx, MOLE_END_PADDED);
@@ -632,7 +632,10 @@ int moleSend(port_ctx *ctx, const uint8_t *src, int len) {
 
 static mole_inFn  inFn;
 static int done;
-static int position;
+
+#if (MOLE_TRACE)
+static uint32_t position;
+#endif
 
 static uint8_t NextByte(void) {
     int c = inFn();
@@ -640,7 +643,9 @@ static uint8_t NextByte(void) {
         done = 1;
         return MOLE_TAG_END;
     }
+#if (MOLE_TRACE)
     position++;
+#endif
     return (uint8_t)c;
 }
 
@@ -690,7 +695,10 @@ static int NextBlock(port_ctx *ctx, uint8_t *dest) {
 }
 
 int moleFileIn (port_ctx *ctx, mole_inFn cFn, mole_outFn mFn) {
-    done = 0;  position = 0;
+    done = 0;
+#if (MOLE_TRACE)
+    position = 0;
+#endif
     inFn = cFn;
         PRINTf("\n%s decrypting input stream c, producing output stream m", ctx->name);
     if (mFn == NULL) PRINTf("\nAuthenticate Only");

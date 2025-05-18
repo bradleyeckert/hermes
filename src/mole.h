@@ -1,6 +1,10 @@
 #ifndef __MOLE_H__
 #define __MOLE_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include "xchacha/src/xchacha.h"
 #include "blake2s/src/blake2s.h"
@@ -9,7 +13,8 @@
 #define MOLE_ALLOC_MEM_UINT32S      4096 /* longs for context memory */
 #warning "MOLE_ALLOC_MEM_UINT32S is not defined, using a generous value that eats RAM"
 #endif
-#define MOLE_FILE_MESSAGE_SIZE         9 /* Log2 of file message block */
+
+#define MOLE_FILE_CHUNK_SIZE_LOG2     10 /* Log2 of file chunk size */
 
 #define MOLE_IV_LENGTH                16 /* Bytes in IV, should be 16 */
 #define MOLE_HMAC_LENGTH              16 /* Bytes in HMAC, may be 8 or 16 */
@@ -98,7 +103,8 @@ typedef void (*crypt_blockFn)(size_t *ctx, const uint8_t *in, uint8_t *out, int 
 
 typedef struct
 {   char* name;             // port name (for debugging)
-// The 4 following could be declared void*, but use actual structures for code completion
+// The 4 following could be declared type void*, but use actual structures for
+// the convenience of code completion in the editor.
     xChaCha_ctx *rcCtx;     // receiver encryption context
 	blake2s_state *rhCtx;   // receiver HMAC context
     xChaCha_ctx *tcCtx;     // transmitter encryption context
@@ -244,5 +250,9 @@ void moleFileFinal (port_ctx *ctx);     // finish
     ...
     moleFileFinal(ctx);
 */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __MOLE_H__ */

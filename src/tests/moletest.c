@@ -266,7 +266,7 @@ int main() {
         printf("%d bytes written\n", tally);
     }
     if (tests & 0x200) {
-        printf("\n\nTest read from demofile.bin: ");
+        printf("\nTest read from demofile.bin: ");
         file = fopen("demofile.bin", "rb");
         if (file == NULL) {
             printf("\nError opening file!");
