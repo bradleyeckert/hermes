@@ -432,10 +432,10 @@ int molePutc(port_ctx *ctx, uint8_t c){
         ctx->state = DISPATCH;
         break;
     case DISPATCH: // message data begins here
-       PRINTF("\n%s incoming packet, tag=%d\n", ctx->name, ctx->tag);
         ctx->rxbuf[0] = c;
         ctx->ridx = 1;
         ctx->state = GET_PAYLOAD;
+            PRINTF("\n%s incoming packet, tag=%d\n", ctx->name, ctx->tag);
         switch (ctx->tag) {
         case MOLE_TAG_GET_BOILER:
             SendBoiler(ctx);
@@ -454,6 +454,8 @@ int molePutc(port_ctx *ctx, uint8_t c){
             ctx->state = GET_IV;
             break;
         }
+        if (ended) ctx->state = IDLE;
+        break;
     case HANG:                                  // wait for end token
 noend:  if (ended) {                            // premature end not allowed
             ctx->state = IDLE;
