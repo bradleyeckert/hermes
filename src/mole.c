@@ -455,7 +455,10 @@ int molePutc(port_ctx *ctx, uint8_t c){
             break;
         }
     case HANG:                                  // wait for end token
-noend:  if (ended) ctx->state = IDLE;           // premature end not allowed
+noend:  if (ended) {                            // premature end not allowed
+            ctx->state = IDLE;
+            r = MOLE_ERROR_INVALID_LENGTH;
+        }
         break;
     case GET_IV:
         ctx->rxbuf[ctx->ridx++] = c;
