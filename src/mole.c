@@ -356,6 +356,7 @@ void molePair(port_ctx *ctx) {
     PRINTf("\n%s sending Pairing request, ", ctx->name);
     ctx->rReady = 0;
     ctx->tReady = 0;
+    ctx->state = IDLE;
     SendHeader(ctx, MOLE_TAG_RESET);
     SendEnd(ctx);
 }
