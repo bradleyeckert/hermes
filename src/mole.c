@@ -352,6 +352,8 @@ int moleReKey(port_ctx *ctx, const uint8_t *key){
     return moleReKeyRequest(ctx, key, MOLE_MSG_NEW_KEY);
 }
 
+// molePair and moleBoilerReq assume that the FSMs are not seeing traffic
+
 void molePair(port_ctx *ctx) {
     PRINTf("\n%s sending Pairing request, ", ctx->name);
     ctx->rReady = 0;
@@ -364,6 +366,8 @@ void molePair(port_ctx *ctx) {
 
 void moleBoilerReq(port_ctx *ctx) {
     PRINTf("\n%s sending Boilerplate request, ", ctx->name);
+    ctx->state = IDLE;                          // reset local FSM
+    SendEnd(ctx);                               // reset remote FSM
     SendHeader(ctx, MOLE_TAG_GET_BOILER);
     SendEnd(ctx);
 }
