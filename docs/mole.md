@@ -21,12 +21,19 @@ Pre-shared keys avoid PKE. Without PKE, there is no spoofing.
 
 The tradeoff between pre-shared vs public keys is influenced by advanced Man-in-The-Middle
 (MiTM) spoofing [tools](https://slava-moskvin.medium.com/extracting-firmware-every-method-explained-e94aa094d0dd)
-that create self-signed HTTPS certificates.
-There are also tools to defeat SSL pinning. The problems with key escrow,
-mostly centered on trust, would not be solved with PKE and certificates.
+that create self-signed HTTPS certificates. Certificate pinning (accepting only a specific public key)
+would work if the certificate server is in a secure environment.
+The client can ask the server to send back a hash of random data and the (top secret) private key
+used to sign the certificate.
+Otherwise, the client wouldn't know whether or not the certificate came from a MitM. That kills the insecure
+server use case because you never want to risk the certificate's private key getting into the wild.
+Pre-shared keys in this case would be much safer. One compromised key would compromise one device.
+
+The problems with key escrow, mostly centered on trust, would not be solved with PKE and certificates.
 A manufacturer can brick your device either way.
-One-way encrypted messages, such as those stored in files, do not support key exchange,
-which rules out PKE. Booting from encrypted Flash would not use PKE.
+One-way encrypted messages, such as those stored in files or SPI NOR Flash,
+do not support key exchange, which rules out PKE. 
+Booting from encrypted Flash would not use PKE.
 
 With pre-shared keys, an authorized user must securely log into the key server and
 download the key in order to pair a UART connection.
@@ -131,9 +138,9 @@ This specialized function is platform-specific since it writes to Flash.
 Specifics are outside the scope of `mole`,
 but keys are expected to be signed with a 16-byte HMAC.
 The key set is 64 bytes total:
-32 bytes for the encryption key, 16 bytes for the HMAC key, and 16 bytes for the key-set HMAC.
+32 bytes for the user passcode, 16 bytes for the admin passcode, and 16 bytes for the key-set HMAC.
 The key-set is signed by the HMAC key and a master key `HERMES_KEY_HASH_KEY`.
-Such HMAC checking is not necessary. If an attacker could program a new key,
+Such HMAC checking is not very useful - if an attacker could program a new key,
 it would only brick the port.
 
 The `int moleReKey(port_ctx *ctx, const uint8_t *key)` function sends a message with
@@ -229,10 +236,13 @@ and outgoing bytes fed to an output function. The basic flow is:
 - Plaintext from app --> `int moleSend(port_ctx *ctx, const uint8_t *m, uint32_t bytes);`
 - `void (*mole_ciphrFn)(uint8_t c);` --> Outgoing ciphertext
 
-Underlying functions (those with various dependencies) are late-bound in the port_ctx struct
-to simplify reuse. There is no heap usage.
-Instead, `mole` implements its own memory allocation.
+There is no heap usage. Instead, `mole` implements its own memory allocation.
 It turns out that each port needs about 1KB for context and buffers.
+
+`molePutc` processes incoming data on a byte-size basis using an FSM.
+The rationale for the FSM is to prevent blocking without the need for multitasking.
+If the stream gets "lost", from dropped data or being triggered by corrupted data,
+a *\r* byte will reset the FSM.
 
 `void (*mole_plainFn)(const uint8_t *src, uint16_t length);` is the workhorse of `mole`.
 It accepts a plaintext message.
@@ -257,10 +267,5 @@ There are laws that address this:
 The use of pre-shared keys puts the onus of key secrecy on the manufacturer.
 Whoever is trusted with the "family jewels" must not allow copies of them to get out
 into the wild. Otherwise, the affected devices would need re-keying.
-
-Pre-shared keys are generated at provisioning,
-which is the same time the device's MCU is loaded with firmware.
-A utility generates random keys and merges them into the firmware image just before JTAG programming.
-It also saves them to a database.
-Such activity must be done in a secure location that protects the keys.
-
+Key management is outside the scope of `mole`, as it should be for a public repo.
+You might not want the world knowing how you manage your secrets.

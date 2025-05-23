@@ -326,9 +326,9 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
         ctx->rhCtx = Allocate(sizeof(blake2s_state));
         ctx->thCtx = Allocate(sizeof(blake2s_state));
         BeginHash  = b2s_hmac_init_g;
-        Hash  = b2s_hmac_putc_g;
-        EndHash = b2s_hmac_final_g;
-        BeginTx  = xc_crypt_init_g;
+        Hash       = b2s_hmac_putc_g;
+        EndHash    = b2s_hmac_final_g;
+        BeginTx    = xc_crypt_init_g;
         BlockCipher = xc_crypt_block_g;
     }
     if (ALLOC_HEADROOM < 0) return MOLE_ERROR_OUT_OF_MEMORY;
