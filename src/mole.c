@@ -5,8 +5,8 @@ AEAD-secured ports (for UARTs, etc.)
 
 #include <stdint.h>
 #include <string.h>
-#include "xchacha/src/xchacha.h"
-#include "blake2s/src/blake2s.h"
+#include "xchacha.h"
+#include "blake2s.h"
 #include "mole.h"
 #include "moleconfig.h"
 

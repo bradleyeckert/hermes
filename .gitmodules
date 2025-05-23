@@ -1,6 +1,0 @@
-[submodule "src/xchacha"]
-	path = src/xchacha
-	url = https://github.com/bradleyeckert/xchacha
-[submodule "src/blake2s"]
-	path = src/blake2s
-	url = https://github.com/bradleyeckert/blake2s

@@ -6,8 +6,8 @@ extern "C" {
 #endif
 
 #include <stdint.h>
-#include "xchacha/src/xchacha.h"
-#include "blake2s/src/blake2s.h"
+#include "xchacha.h"
+#include "blake2s.h"
 
 // Define MOLE_ALLOC_MEM_UINT32S in the project to avoid escess RAM usage
 #ifndef MOLE_ALLOC_MEM_UINT32S
