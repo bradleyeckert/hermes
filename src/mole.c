@@ -286,7 +286,13 @@ static int KDF (port_ctx *ctx, uint8_t *dest, const uint8_t *src, int length,
     return 0;
 }
 
-static int moleNewKeys(port_ctx *ctx, const uint8_t *key) {
+#define PREAMBLE_SIZE 2
+#define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (MOLE_HMAC_LENGTH + PREAMBLE_SIZE))
+
+// -----------------------------------------------------------------------------
+// Public functions
+
+int moleNewKeys(port_ctx *ctx, const uint8_t *key) {
     int r = testKey(ctx, key);
     if (r) return r;
     r |= KDF(ctx, ctx->hmackey,       key, MOLE_HMAC_KEY_LENGTH, 55, 0);
@@ -294,12 +300,6 @@ static int moleNewKeys(port_ctx *ctx, const uint8_t *key) {
     r |= KDF(ctx, ctx->adminpasscode, &key[32], MOLE_ADMINPASS_LENGTH, 34, 0);
     return r;
 }
-
-#define PREAMBLE_SIZE 2
-#define MAX_RX_LENGTH ((ctx->rBlocks << BLOCK_SHIFT) - (MOLE_HMAC_LENGTH + PREAMBLE_SIZE))
-
-// -----------------------------------------------------------------------------
-// Public functions
 
 // Call this before setting up any mole ports and when closing app.
 void moleNoPorts(void) {
@@ -311,7 +311,7 @@ void moleNoPorts(void) {
 int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, mole_rngFn rngFn,
                    mole_boilrFn boiler, mole_plainFn plain, mole_ciphrFn ciphr,
-                   const uint8_t *key, mole_WrKeyFn WrKeyFn) {
+                   mole_WrKeyFn WrKeyFn) {
     memset(ctx, 0, sizeof(port_ctx));
     ctx->plainFn = plain;                       // plaintext output handler
     TX = ciphr;                                 // ciphertext output handler
@@ -336,7 +336,7 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* n
     ctx->rngFn = rngFn;
     ctx->boilerplate = boilerplate;             // counted string
     ctx->name = name;                           // Zstring name for debugging
-    return moleNewKeys(ctx, key);
+    return 0;
 }
 
 int moleRAMused (int ports) {

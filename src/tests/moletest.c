@@ -200,9 +200,9 @@ int main() {
 //    snoopy = 1;             // display the wire traffic
     moleNoPorts();
     int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, getc_RNG,
-                  BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, my_keys, UpdateKeySet);
+                  BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, UpdateKeySet);
     if (!ior) ior = moleAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, getc_RNG,
-                  BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, my_keys, UpdateKeySet);
+                  BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, UpdateKeySet);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));
         if (ior == MOLE_ERROR_OUT_OF_MEMORY) printf("too small by %d ", -moleRAMunused()/4);
@@ -211,6 +211,8 @@ int main() {
     printf("Static context RAM usage: %d bytes per port\n", moleRAMused(2)/2);
     printf("context_memory has %d unused bytes (%d unused longs), see MOLE_ALLOC_MEM_UINT32S\n",
            moleRAMunused(), moleRAMunused()/4);
+    moleNewKeys(&Alice, my_keys);
+    moleNewKeys(&Bob, my_keys);
     Alice.hashCounterTX = 0x3412; // ensure that re-pair resets these
     Alice.hashCounterRX = 0x341200;
     Bob.hashCounterTX = 0x785600;

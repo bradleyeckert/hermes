@@ -166,14 +166,20 @@ void moleNoPorts(void);
  * @param boiler      Handler for received boilerplate (src, n)
  * @param plain       Handler for received data (src, n)
  * @param ciphr       Handler for char transmission (c)
- * @param key         32-byte encryption key, 16-byte HMAC key, and 16-byte HMAC of these
  * @param WrKeyFn     Function to overwrite the key
  * @return 0 if okay, otherwise MOLE_ERROR_?
  */
 int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol, char* name,
                    uint16_t rxBlocks, mole_rngFn rngFn,
                    mole_boilrFn boiler, mole_plainFn plain, mole_ciphrFn ciphr,
-                   const uint8_t *key, mole_WrKeyFn WrKeyFn);
+                   mole_WrKeyFn WrKeyFn);
+
+/** Append to the port list.
+ * @param ctx         Port identifier
+ * @param key         32-byte encryption key, 16-byte HMAC key, and 16-byte HMAC of these
+ * @return 0 if okay, otherwise MOLE_ERROR_?
+ */
+int moleNewKeys(port_ctx *ctx, const uint8_t *key);
 
 int moleRAMused (int ports);
 int moleRAMunused (void);
