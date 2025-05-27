@@ -44,11 +44,6 @@ A block diagram of the Mole serial port encryption in the context of a key manag
 
 ## AEAD
 
-[Wikipedia](https://en.wikipedia.org/wiki/Authenticated_encryption):
-> Authenticated encryption with associated data (AEAD) is a variant of AE that allows the message to include "associated data" (AD, additional non-confidential information, a.k.a. "additional authenticated data", AAD).
-A recipient can check the integrity of both the associated data and the confidential information in a message.
-
-`mole` uses a symmetric algorithm for encryption and a HMAC (hash) algorithm for message signing.
 
 The default protocol used by `mole` is **XChaCha20-Blake2s**. [Blake2s](https://datatracker.ietf.org/doc/html/rfc7693.html) is used as a HMAC.
 Its 16-byte output authenticates the entire message, including the plaintext header,
