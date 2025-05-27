@@ -14,17 +14,10 @@ Making the UART connector easily accessible does not reduce cybersecurity in any
 ## Tests
 `moletest.c` - A simulation of two ports connected by a noisy null-modem cable
 
-`read.c` - Code for decrypting the `demofile.bin` created by `test.c`
-
 `randkey.c` - Utility to generate a random keyset: 32-byte user passcode, 16-byte admin passcode, and 16-byte HMAC total 64 bytes.
 
 ## Folder structure
 
 `/src` C99 source code for `mole`  
-`/src/blake2s` Blake2s repository (submodule)  
-`/src/xchacha` XChaCha20 repository (submodule)  
 `/src/tests` Tests (each test file has a `main` function)  
 `/docs` Documentation for `mole`
-
----
-Note: Contains [submodules](https://www.geeksforgeeks.org/how-to-clone-git-repositories-including-submodules/). Use `git clone --recurse <url>` to clone. `git submodule update --remote --recursive` will update to latest.
