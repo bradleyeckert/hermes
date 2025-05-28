@@ -81,8 +81,8 @@ static void BoilerHandlerB(const uint8_t *src) {
     printf("\n  Bob received %d-byte boilerplate {%s}", src[0], &src[1]);
 }
 
-const uint8_t AliceBoiler[] =   {"\x13noyb<Alice's_UUID>0"};
-const uint8_t BobBoiler[] =     {"\x13noyb<Bob's_UUID__>0"};
+const uint8_t AliceBoiler[] =   {"\x13mole0<Alice's_UUID>"};
+const uint8_t BobBoiler[] =     {"\x13mole0<Bob's_UUID__>"};
 
 
 const uint8_t AliceMessages[][128] = {
@@ -241,6 +241,10 @@ int main() {
         printf("\nBefore = %x", Bob.adminOK);
         moleAdmin(&Alice);
         printf("\nAfter = 0x%x", Bob.adminOK);
+        if (Bob.adminOK != MOLE_ADMIN_ACTIVE) {
+            printf("\nAdmin passcode was not accepted");
+            return 0x1040;
+        }
     }
     if (tests & 0x80) {
         printf("\n\nRe-keying ===============================");
@@ -259,13 +263,17 @@ int main() {
             return 1;
         }
         tally = 0;
-        moleFileNew(&Alice);
+        i = moleFileNew(&Alice);
+        if (i) {
+            printf("\nError %d: %s, ", i, errorCode(i));
+            return 0x1101;
+        }
         for (int i = 0; i < 100; i++) {
             moleFileOut(&Alice, (uint8_t*)"ABCDEFGHIJKLMNOP", 16);
         }
         moleFileFinal(&Alice);
         fclose(file);
-        printf("%d bytes written\n", tally);
+        printf("0x%x bytes written\n", tally);
     }
     if (tests & 0x200) {
         printf("\nTest read from demofile.bin: ");
@@ -277,7 +285,7 @@ int main() {
         tally = 0;
         int ior = moleFileIn(&Bob, CharFromFile, CharEmit);
         fclose(file);      // ^-- change to Bob
-        printf("\n%d bytes read, ior=%d\n", tally, ior);
+        printf("\n0x%x bytes read, ior=%d\n", tally, ior);
         if (ior) return 0x1200;
     }
     return 0;
