@@ -190,7 +190,7 @@ uint8_t * UpdateKeySet(uint8_t* keyset) {
 	return my_keys;
 }
 
-int getc_RNG(void) {
+uint8_t moleTRNG(void) {
 	return rand() & 0xFF;	// DO NOT USE in a real application
 }                           // Use a TRNG instead
 
@@ -199,9 +199,9 @@ int main() {
 //    tests = 0x307;
 //    snoopy = 1;             // display the wire traffic
     moleNoPorts();
-    int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2, getc_RNG,
+    int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, UpdateKeySet);
-    if (!ior) ior = moleAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2, getc_RNG,
+    if (!ior) ior = moleAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2,
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, UpdateKeySet);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));
@@ -255,9 +255,9 @@ int main() {
     printf("\nAlice sent %d bytes", Alice.counter);
     printf("\nBob sent %d bytes", Bob.counter);
     if (tests & 0x100) {
-        printf("\n\nTest write to demofile.bin, ");
+        printf("\n\nTest write to bootfile.bin, ");
         Alice.ciphrFn = CharToFile;
-        file = fopen("demofile.bin", "wb");
+        file = fopen("bootfile.bin", "wb");
         if (file == NULL) {
             printf("\nError creating file!");
             return 1;
@@ -268,6 +268,7 @@ int main() {
             printf("\nError %d: %s, ", i, errorCode(i));
             return 0x1101;
         }
+        // Encrypt 1600 (0x640) bytes of plaintext as input
         for (int i = 0; i < 100; i++) {
             moleFileOut(&Alice, (uint8_t*)"ABCDEFGHIJKLMNOP", 16);
         }
@@ -276,8 +277,8 @@ int main() {
         printf("0x%x bytes written\n", tally);
     }
     if (tests & 0x200) {
-        printf("\nTest read from demofile.bin: ");
-        file = fopen("demofile.bin", "rb");
+        printf("\nTest read from bootfile.bin: ");
+        file = fopen("bootfile.bin", "rb");
         if (file == NULL) {
             printf("\nError opening file!");
             return 2;
