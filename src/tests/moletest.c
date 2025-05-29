@@ -190,7 +190,7 @@ uint8_t * UpdateKeySet(uint8_t* keyset) {
 	return my_keys;
 }
 
-uint8_t moleTRNG(void) {
+int moleTRNG(void) {
 	return rand() & 0xFF;	// DO NOT USE in a real application
 }                           // Use a TRNG instead
 

@@ -176,7 +176,7 @@ static int SendIV(port_ctx *ctx, int tag) {     // send random IV with random IV
     for (int i = 0; i < MOLE_IV_LENGTH ; i++) {
         c = moleTRNG();  r |= c;  mIV[i] = (uint8_t)c;
         c = moleTRNG();  r |= c;  cIV[i] = (uint8_t)c;
-        if (r & 0x100) {
+        if (r < 0) {
             return MOLE_ERROR_TRNG_FAILURE;
         }
     }

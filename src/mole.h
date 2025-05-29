@@ -147,7 +147,7 @@ typedef struct
 } port_ctx;
 
 // external functions call by mole:
-uint8_t moleTRNG(void);
+int moleTRNG(void);         // return random # between 0 and 255, -1 if error
 
 // Streaming I/O function types
 typedef int (*mole_inFn)(void);
