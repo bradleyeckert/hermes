@@ -34,13 +34,11 @@ static uint8_t snoop(uint8_t c, char t) {
 static char* errorCode(int e) {
     switch(e) {
     case MOLE_ERROR_INVALID_STATE:   return "Invalid state (should never happen)";
-    case MOLE_ERROR_UNKNOWN_CMD:     return "Unknown Command";
     case MOLE_ERROR_TRNG_FAILURE:    return "TRNG failure - need to re-initialize";
-    case MOLE_ERROR_MISSING_KEY:     return "Missing key - maybe has NULL value";
     case MOLE_ERROR_BAD_HMAC:        return "Invalid HMAC";
     case MOLE_ERROR_INVALID_LENGTH:  return "Invalid packet length";
     case MOLE_ERROR_LONG_BOILERPLT:  return "Boilerplate is too long";
-    case MOLE_ERROR_MSG_TRUNCATED:   return "Message was truncated";
+    case MOLE_ERROR_MSG_NOT_SENT:    return "Message not sent";
     case MOLE_ERROR_OUT_OF_MEMORY:   return "Insufficient MOLE_ALLOC_MEM_UINT32S";
     case MOLE_ERROR_REKEYED:         return "Keys were changed";
     case MOLE_ERROR_BUF_TOO_SMALL:   return "Buffer blocks must be at least 2";
@@ -199,9 +197,9 @@ int main() {
 //    tests = 0x307;
 //    snoopy = 1;             // display the wire traffic
     moleNoPorts();
-    int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 2,
+    int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 3,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, UpdateKeySet);
-    if (!ior) ior = moleAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 2,
+    if (!ior) ior = moleAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 3,
                   BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, UpdateKeySet);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));
