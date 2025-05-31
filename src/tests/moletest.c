@@ -62,6 +62,9 @@ static void BobCiphertextOutput(uint8_t c) {
 /*
 Received-plaintest functions
 */
+
+static char LastReceived[4096];
+
 static void PlaintextHandler(const uint8_t *src, int length) {
     printf("\nPlaintext {");
     for (int i = 0; i < length; i++) {
@@ -69,6 +72,12 @@ static void PlaintextHandler(const uint8_t *src, int length) {
         //printf("%02x/", src[i]);
     }
     printf("} ");
+    memcpy(LastReceived, src, length);
+    LastReceived[length] = 0;
+}
+
+static int TestLast(const char* expected) {
+    return strcmp(LastReceived, expected);
 }
 
 static void BoilerHandlerA(const uint8_t *src) {
@@ -222,7 +231,10 @@ int main() {
     if (tests & 0x08) {
         printf("\n\nAlice ===================================");
         moleSend(&Alice, (uint8_t*)"*", 1);
+        if (TestLast("*")) return 0x1008;
         moleSend(&Alice, (uint8_t*)"*", 0);
+        moleSend(&Alice, (uint8_t*)"Hello World", 11);
+        if (TestLast("Hello World")) return 0x1008;
     }
     if (tests & 0x10) {
         i = 0;
@@ -258,13 +270,13 @@ int main() {
         file = fopen("bootfile.bin", "wb");
         if (file == NULL) {
             printf("\nError creating file!");
-            return 1;
+            return 0x1101;
         }
         tally = 0;
         i = moleFileNew(&Alice);
         if (i) {
             printf("\nError %d: %s, ", i, errorCode(i));
-            return 0x1101;
+            return 0x1102;
         }
         // Encrypt 1600 (0x640) bytes of plaintext as input
         for (int i = 0; i < 100; i++) {
