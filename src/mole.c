@@ -395,7 +395,7 @@ int molePutc(port_ctx *ctx, uint8_t c){
     int temp;
     uint8_t *k;
     // Pack escape sequence to binary ------------------------------------------
-    int ended = (c == MOLE_TAG_END);            // distinguish '12' from '10 02'
+    int ended = (c == MOLE_TAG_END);            // distinguish '0A' from '0B 02'
     if (ctx->escaped) {
         ctx->escaped = 0;
         if (c > 1) switch(c) {
