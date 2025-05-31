@@ -44,7 +44,6 @@ A block diagram of the Mole serial port encryption in the context of a key manag
 
 ## AEAD
 
-
 The default protocol used by `mole` is **XChaCha20-Blake2s**. [Blake2s](https://datatracker.ietf.org/doc/html/rfc7693.html) is used as a HMAC.
 Its 16-byte output authenticates the entire message, including the plaintext header,
 so that the header cannot be altered.
@@ -58,7 +57,6 @@ Private keys are derived from a KDF whose 64-byte input is:
 - 256-bit Login passcode, must match on both ends to send messages.
 - 128-bit Admin passcode, must match on both ends to raise the privilege level.
 - 128-bit HMAC hash, for error-checking the passcodes.
-
 
 ## Escape sequences
 
