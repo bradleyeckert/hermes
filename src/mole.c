@@ -324,7 +324,7 @@ int moleAddPort(port_ctx *ctx, const uint8_t *boilerplate, int protocol,
     ctx->rBlocks = rxBlocks;                    // block size (1<<BLOCK_SHIFT) bytes
     r = Allocate(rxBlocks << BLOCK_SHIFT, &ctx->rxbuf);
     if (r) return r;
-    if (rxBlocks < 1) return MOLE_ERROR_BUF_TOO_SMALL;
+    if (rxBlocks < 2) return MOLE_ERROR_BUF_TOO_SMALL;
     switch (protocol) {
     default: // 0
         r = Allocate(sizeof(xChaCha_ctx),   &ctx->rcCtx);  if (r) return r;

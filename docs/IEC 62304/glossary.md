@@ -28,7 +28,7 @@ Required result or output (includes documentation) of an [ACTIVITY](#ACTIVITY) o
 ## <a name="EVALUATION"></a>EVALUATION
 A systematic determination of the extent to which an entity meets its specified criteria.
 
-## <a name="[HARM](#HARM)"></a>[HARM](#HARM)
+## <a name="HARM"></a>HARM
 Physical injury, damage, or both to the health of people or damage to property or the environment.
 
 ## <a name="HAZARD"></a>HAZARD
