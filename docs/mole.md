@@ -58,17 +58,6 @@ Private keys are derived from a KDF whose 64-byte input is:
 - 128-bit Admin passcode, must match on both ends to raise the privilege level.
 - 128-bit HMAC hash, for error-checking the passcodes.
 
-## Escape sequences
-
-`mole` uses escape sequences to reserve characters for framing messages in UART streams.
-The most common ending on terminal input is a newline, `\n`, or 0x0A.
-The binary stream has its `\n` translated to `0x0B 0x00` when sent across a wire,
-reserving `\n` for the actual end-of-message.
-
-`mole` messages begin with a character less than blank (<0x20) and end with `\n` (0x0A).
-Cooked terminal input can be directed elsewhere because it begins with (>0x1F).
-The underlying UART interface can buffer input until `\n` before sending it on.
-
 ## Language dependencies
 
 - C99
@@ -149,20 +138,6 @@ Boilerplate messages are plaintext, so they do not get a hash.
 The allowed length of a boilerplate is up to the minimum receive buffer size.
 Boilerplate responses longer than that are truncated,
 so the receiver will wait for an end-of-message token.
-
-The boilerplate contains a UUID and the AEAD protocol used (0 means XChaCha20-Blake2s).
-The default data structure for `mole` is:
-
-- Length of the boilerplate in bytes, should be less than 65. Default is 18.
-- 4-byte "noyb" string (noyb = None of your business) or "boot".
-- 1-byte AEAD format identifier
-- 13-byte UUID
-- Optional CRC
-
-The AEAD format identifier packs bitfields as follows:
-
-- b3:b0 = AEAD protocol. 0 = XChaCha20-Blake2s.
-- b7:b4 = reserved, default is 3.
 
 A received boilerplate is sent to a handler function with src and length parameters.
 It is a counted string that is zero-terminated so there are multiple ways to get the length.
@@ -246,7 +221,7 @@ which is handled by dropping the packet and resetting the connection by exchangi
 
 Cybersecurity is meant to protect devices and data from tampering,
 not give IoT manufacturers God-like powers. Unfortunately, the two overlap.
-Any application that uses Mole should make private data inaccessible to the manufacturer.
+Any application that uses **mole** should make private data inaccessible to the manufacturer.
 There are laws that address this:
 
 - The GDPR, applicable in Europe
