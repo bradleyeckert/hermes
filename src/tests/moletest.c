@@ -43,6 +43,7 @@ static char* errorCode(int e) {
     case MOLE_ERROR_REKEYED:         return "Keys were changed";
     case MOLE_ERROR_BUF_TOO_SMALL:   return "Buffer blocks must be at least 2";
     case MOLE_ERROR_KDFBUF_TOO_SMALL:return "KDFbuffer is too small";
+    case MOLE_ERROR_BAD_BIST:        return "Built-in Self Test failed ";
     default: return "unknown";
     }
 }
