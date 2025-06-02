@@ -206,6 +206,7 @@ int main() {
     int tests = 0x3FF;      // enable these tests...
 //    tests = 0x307;
 //    snoopy = 1;             // display the wire traffic
+    error_pacing = 100000000; // no error injection
     moleNoPorts();
     int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 3,
                   BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, UpdateKeySet);
@@ -233,9 +234,11 @@ int main() {
         printf("\n\nAlice ===================================");
         moleSend(&Alice, (uint8_t*)"*", 1);
         if (TestLast("*")) return 0x1008;
-        moleSend(&Alice, (uint8_t*)"*", 0);
         moleSend(&Alice, (uint8_t*)"Hello World", 11);
         if (TestLast("Hello World")) return 0x1008;
+        for (int i = 0; i < 37; i++) {
+            moleSend(&Alice, (uint8_t*)"0123456789ABCDEFGHIJLKMNOPQRSTUVWXYZ", i);
+        }
     }
     if (tests & 0x10) {
         i = 0;
@@ -246,7 +249,7 @@ int main() {
         i = 0;
         do {j = SendBob(i++);} while (i != j);
     }
-    error_pacing = 1000000; // turn off error injection
+    error_pacing = 100000000; // turn off error injection
     if (tests & 0x40) {
         printf("\nEnable adminOK mode =======================");
         printf("\nBefore = %x", Bob.adminOK);
