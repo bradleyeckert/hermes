@@ -6,16 +6,16 @@ CFLAGS = -Wall -g
 
 SRCS1 = moletest.c \
 ../mole.c \
-../blake2s/src/blake2s.c \
-../xchacha/src/xchacha.c
+../blake2s.c \
+../xchacha.c
 
 SRCS3 = randkey.c \
-../blake2s/src/blake2s.c \
+../blake2s.c \
 
 OBJS1 = $(SRCS1:.c=.o)
 OBJS3 = $(SRCS3:.c=.o)
 
-all:	mtest ftest randkey
+all:	mtest randkey
 
 mtest:	$(OBJS1)
 	$(CC) -o $@ $^ $(CFLAGS)
