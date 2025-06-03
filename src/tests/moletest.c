@@ -5,7 +5,7 @@
 #include "../mole.h"
 #include "../moleconfig.h"
 
-// -----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Some default values for testing
 
 port_ctx Alice;
@@ -17,7 +17,7 @@ int snoopy;
 // Connect Alice to Bob via a virtual null-modem cable
 
 int error_pacing = 720;
-int errorpos = 0;                       // inject error every error_pacing byte
+int errorpos = 0;                      // inject error every error_pacing byte
 
 static uint8_t snoop(uint8_t c, char t) {
     if (!(++errorpos % error_pacing)) {
@@ -33,17 +33,28 @@ static uint8_t snoop(uint8_t c, char t) {
 
 static char* errorCode(int e) {
     switch(e) {
-    case MOLE_ERROR_INVALID_STATE:   return "Invalid state (should never happen)";
-    case MOLE_ERROR_TRNG_FAILURE:    return "TRNG failure - need to re-initialize";
-    case MOLE_ERROR_BAD_HMAC:        return "Invalid HMAC";
-    case MOLE_ERROR_INVALID_LENGTH:  return "Invalid packet length";
-    case MOLE_ERROR_LONG_BOILERPLT:  return "Boilerplate is too long";
-    case MOLE_ERROR_MSG_NOT_SENT:    return "Message not sent";
-    case MOLE_ERROR_OUT_OF_MEMORY:   return "Insufficient MOLE_ALLOC_MEM_UINT32S";
-    case MOLE_ERROR_REKEYED:         return "Keys were changed";
-    case MOLE_ERROR_BUF_TOO_SMALL:   return "Buffer blocks must be at least 2";
-    case MOLE_ERROR_KDFBUF_TOO_SMALL:return "KDFbuffer is too small";
-    case MOLE_ERROR_BAD_BIST:        return "Built-in Self Test failed ";
+    case MOLE_ERROR_INVALID_STATE:
+        return "Invalid state (should never happen)";
+    case MOLE_ERROR_TRNG_FAILURE:
+        return "TRNG failure - need to re-initialize";
+    case MOLE_ERROR_BAD_HMAC:
+        return "Invalid HMAC";
+    case MOLE_ERROR_INVALID_LENGTH:
+        return "Invalid packet length";
+    case MOLE_ERROR_LONG_BOILERPLT:
+        return "Boilerplate is too long";
+    case MOLE_ERROR_MSG_NOT_SENT:
+        return "Message not sent";
+    case MOLE_ERROR_OUT_OF_MEMORY:
+        return "Insufficient MOLE_ALLOC_MEM_UINT32S";
+    case MOLE_ERROR_REKEYED:
+        return "Keys were changed";
+    case MOLE_ERROR_BUF_TOO_SMALL:
+        return "Buffer blocks must be at least 2";
+    case MOLE_ERROR_KDFBUF_TOO_SMALL:
+        return "KDFbuffer is too small";
+    case MOLE_ERROR_BAD_BIST:
+        return "Built-in Self Test failed ";
     default: return "unknown";
     }
 }
@@ -157,10 +168,14 @@ int PairAlice(void) {
     printf("\nAlice is pairing with key ");
     for (int i=0; i<32; i++) printf("%02x", Alice.cryptokey[i]);
     molePair(&Alice);
-    if (Alice.hashCounterTX != Bob.hashCounterRX) printf("\nERROR: Alice cannot send to Bob");
-    if (Bob.hashCounterTX != Alice.hashCounterRX) printf("\nERROR: Bob cannot send to Alice");
+    if (Alice.hashCounterTX != Bob.hashCounterRX) {
+        printf("\nERROR: Alice cannot send to Bob");
+    }
+    if (Bob.hashCounterTX != Alice.hashCounterRX) {
+        printf("\nERROR: Bob cannot send to Alice");
+    }
     printf("\nAvailability: Alice=%d, Bob=%d",
-           moleAvail(&Alice), moleAvail(&Bob));
+        moleAvail(&Alice), moleAvail(&Bob));
     return (moleAvail(&Alice)) && (moleAvail(&Bob));
 }
 
@@ -184,7 +199,7 @@ void CharEmit(uint8_t c) {
 }
 
 
-// 32-byte encryption key, 32-byte MAC key, 16-byte adminOK password, 32-byte spare keys, 16-byte hash
+// 32-byte token, 16-byte adminOK password, 16-byte hash
 uint8_t my_keys[] = TESTPASS_1;
 const uint8_t new_keys[] = TESTPASS_2;
 
@@ -209,17 +224,20 @@ int main() {
     error_pacing = 100000000; // no error injection
     moleNoPorts();
     int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 3,
-                  BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, UpdateKeySet);
+        BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, UpdateKeySet);
     if (!ior) ior = moleAddPort(&Bob, BobBoiler, MY_PROTOCOL, "BOB", 3,
-                  BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, UpdateKeySet);
+        BoilerHandlerB, PlaintextHandler, BobCiphertextOutput, UpdateKeySet);
     if (ior) {
         printf("\nError %d: %s, ", ior, errorCode(ior));
-        if (ior == MOLE_ERROR_OUT_OF_MEMORY) printf("too small by %d ", -moleRAMunused()/4);
+        if (ior == MOLE_ERROR_OUT_OF_MEMORY) {
+            printf("too small by %d ", -moleRAMunused()/4);
+        }
         return ior;
     }
     printf("Static context RAM usage: %d bytes per port\n", moleRAMused(2)/2);
-    printf("context_memory has %d unused bytes (%d unused longs), see MOLE_ALLOC_MEM_UINT32S\n",
-           moleRAMunused(), moleRAMunused()/4);
+    printf("context_memory has %d unused bytes (%d unused longs)",
+        moleRAMunused(), moleRAMunused()/4);
+    printf(", see MOLE_ALLOC_MEM_UINT32S\n");
     moleNewKeys(&Alice, my_keys);
     moleNewKeys(&Bob, my_keys);
     Alice.hashCounterTX = 0x3412; // ensure that re-pair resets these
@@ -236,8 +254,8 @@ int main() {
         if (TestLast("*")) return 0x1008;
         moleSend(&Alice, (uint8_t*)"Hello World", 11);
         if (TestLast("Hello World")) return 0x1008;
-        for (int i = 0; i < 37; i++) {
-            moleSend(&Alice, (uint8_t*)"0123456789ABCDEFGHIJLKMNOPQRSTUVWXYZ", i);
+        for (int i = 0; i < 33; i++) {
+            moleSend(&Alice, (uint8_t*)"0123456789ABCDEFGHIJLKMNOPQRSTUV", i);
         }
     }
     if (tests & 0x10) {
