@@ -4,13 +4,13 @@ CC = gcc
 # Define compiler flags (e.g., -Wall for all warnings)
 CFLAGS = -Wall -g
 
-SRCS1 = moletest.c \
-../mole.c \
-../blake2s.c \
-../xchacha.c
+SRCS1 = ./tests/moletest.c \
+src/mole.c \
+src/blake2s.c \
+src/xchacha.c
 
-SRCS3 = randkey.c \
-../blake2s.c \
+SRCS3 = ./tests/randkey.c \
+src/blake2s.c \
 
 OBJS1 = $(SRCS1:.c=.o)
 OBJS3 = $(SRCS3:.c=.o)

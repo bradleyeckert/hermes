@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include "../mole.h"
-#include "../moleconfig.h"
+#include "../src/mole.h"
+#include "../src/moleconfig.h"
 
 // ---------------------------------------------------------------------------
 // Some default values for testing

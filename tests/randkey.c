@@ -3,10 +3,10 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
-#include "../xchacha.h"
-#include "../blake2s.h"
-#include "../mole.h"
-#include "../moleconfig.h"
+#include "../src/xchacha.h"
+#include "../src/blake2s.h"
+#include "../src/mole.h"
+#include "../src/moleconfig.h"
 
 #define MaximumKeys 32
 
