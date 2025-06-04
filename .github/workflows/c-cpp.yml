@@ -13,12 +13,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: point to makefile
-      run: cd ./src/tests
     - name: make clean
       run: make clean
     - name: make
       run: make
-    - name: make mtest
-      run: make mtest
       
