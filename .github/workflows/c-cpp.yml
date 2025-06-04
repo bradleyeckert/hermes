@@ -17,5 +17,9 @@ jobs:
       run: make clean
     - name: make
       run: make
-    - name: test
+    - name: test xchacha
+      run: ./xtest
+    - name: test blake2s
+      run: ./btest
+    - name: test mole
       run: ./mtest
