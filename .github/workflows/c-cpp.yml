@@ -17,4 +17,5 @@ jobs:
       run: make clean
     - name: make
       run: make
-      
+    - name: test
+      run: ./mtest
