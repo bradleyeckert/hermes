@@ -43,21 +43,53 @@ static char* errorCode(int e) {
         return "Invalid packet length";
     case MOLE_ERROR_LONG_BOILERPLT:
         return "Boilerplate is too long";
-    case MOLE_ERROR_MSG_NOT_SENT:
-        return "Message not sent";
     case MOLE_ERROR_OUT_OF_MEMORY:
         return "Insufficient MOLE_ALLOC_MEM_UINT32S";
     case MOLE_ERROR_REKEYED:
         return "Keys were changed";
+    case MOLE_ERROR_MSG_NOT_SENT:
+        return "Message not sent";
     case MOLE_ERROR_BUF_TOO_SMALL:
         return "Buffer blocks must be at least 2";
     case MOLE_ERROR_KDFBUF_TOO_SMALL:
         return "KDFbuffer is too small";
+    case MOLE_ERROR_MISSING_HMAC:
+        return "Stream is missing the HMAC tag ";
+    case MOLE_ERROR_MISSING_IV:
+        return "Stream is missing the IV ";
+    case MOLE_ERROR_STREAM_ENDED:
+        return "Stream ended prematurely ";
+    case MOLE_ERROR_BAD_END_RUN:
+        return "Unexpected plaintext in data run ";
+    case MOLE_ERROR_NO_RAWPACKET:
+        return "Stream is missing RAW_PACKET tag ";
+    case MOLE_ERROR_NO_ANYLENGTH:
+        return "Stream is missing ANYLENGTH tag ";
     case MOLE_ERROR_BAD_BIST:
         return "Built-in Self Test failed ";
+    case MOLE_ERROR_UNKNOWN_MSG:
+        return "Unknown message ";
     default: return "unknown";
     }
 }
+#define MOLE_ERROR_INVALID_STATE       1 /* FSM reached an invalid state */
+#define MOLE_ERROR_TRNG_FAILURE        2 /* Bad RNG value */
+#define MOLE_ERROR_BAD_HMAC            3
+#define MOLE_ERROR_INVALID_LENGTH      4
+#define MOLE_ERROR_LONG_BOILERPLT      5
+#define MOLE_ERROR_OUT_OF_MEMORY       6
+#define MOLE_ERROR_REKEYED             7
+#define MOLE_ERROR_MSG_NOT_SENT        8
+#define MOLE_ERROR_BUF_TOO_SMALL       9
+#define MOLE_ERROR_KDFBUF_TOO_SMALL   10
+#define MOLE_ERROR_MISSING_HMAC       11
+#define MOLE_ERROR_MISSING_IV         12
+#define MOLE_ERROR_STREAM_ENDED       13
+#define MOLE_ERROR_NO_RAWPACKET       14
+#define MOLE_ERROR_NO_ANYLENGTH       15
+#define MOLE_ERROR_BAD_END_RUN        16
+#define MOLE_ERROR_BAD_BIST           17
+#define MOLE_ERROR_UNKNOWN_MSG        18
 
 static void AliceCiphertextOutput(uint8_t c) {
     c = snoop(c, '-');
@@ -213,15 +245,16 @@ uint8_t * UpdateKeySet(uint8_t* keyset) {
 	return my_keys;
 }
 
-int moleTRNG(void) {
-	return rand() & 0xFF;	// DO NOT USE in a real application
-}                           // Use a TRNG instead
+int moleTRNG(uint8_t *dest, int length) {
+	*dest++ = rand() & 0xFF;    // DO NOT USE 'rand' in a real application
+	return 0;                   // Use a TRNG instead
+}
 
 int main() {
-    int tests = 0x3FF;      // enable these tests...
+    int tests = 0x3FF;          // enable these tests...
 //    tests = 0x307;
-//    snoopy = 1;             // display the wire traffic
-    error_pacing = 100000000; // no error injection
+//    snoopy = 1;               // display the wire traffic
+    error_pacing = 100000000;   // no error injection
     moleNoPorts();
     int ior = moleAddPort(&Alice, AliceBoiler, MY_PROTOCOL, "ALICE", 3,
         BoilerHandlerA, PlaintextHandler, AliceCiphertextOutput, UpdateKeySet);
