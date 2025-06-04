@@ -17,5 +17,5 @@ jobs:
       run: cd ./src/tests
     - name: make
       run: make
-      -name: test
-      run ./mtest
+    - name: test
+      run: ./mtest
