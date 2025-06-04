@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "./src/blake2s.h"
+#include "../src/blake2s.h"
 #include "blake2-kat.h"
 
 static int blake2s( void *out, int outlen, const void *in, int inlen, const void *key )

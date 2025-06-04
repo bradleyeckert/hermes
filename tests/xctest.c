@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "./src/xchacha.h"
+#include "../src/xchacha.h"
 
 
 /** Calculate and compare the newest test vectors from the IETF
