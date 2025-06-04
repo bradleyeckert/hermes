@@ -346,7 +346,7 @@ int main() {
         file = fopen("bootfile.bin", "rb");
         if (file == NULL) {
             printf("\nError opening file!");
-            return 2;
+            return 0x1202;
         }
         tally = 0;
         int ior = moleFileIn(&Bob, CharFromFile, CharEmit);
