@@ -246,8 +246,8 @@ uint8_t * UpdateKeySet(uint8_t* keyset) {
 }
 
 int moleTRNG(uint8_t *dest, int length) {
-	*dest++ = rand() & 0xFF;    // DO NOT USE 'rand' in a real application
-	return 0;                   // Use a TRNG instead
+	while (length--) *dest++ = rand() & 0xFF;   // DO NOT USE 'rand' in a real application
+	return 0;                                   // Use a TRNG instead
 }
 
 int main() {
